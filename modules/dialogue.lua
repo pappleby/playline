@@ -47,8 +47,8 @@ function Dialogue:SetNode(nodeName)
     self.vm:SetNode(nodeName, true)
 end
 
-function Dialogue:SetSelectedOption(selectedOptionID) 
-    this.vm.SetSelectedOption(selectedOptionID);
+function Dialogue:SetSelectedOption(selectedOptionID)
+    self.vm:SetSelectedOption(selectedOptionID);
 end
 
 function Dialogue:SetCoroutineRunning(coroutineRunning)

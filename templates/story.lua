@@ -1,5 +1,5 @@
-import 'dialogue.lua'
-import 'utils.lua'
+import 'libraries/playline/modules/dialogue.lua'
+import 'libraries/playline/modules/utils.lua'
 
 function string.formatcs(str, substitutions)
 	if #substitutions > 0 then
@@ -10,13 +10,13 @@ function string.formatcs(str, substitutions)
 	return str;
 end
 local variableStorage = {}
-local lineStorage = playdate.datastore.read('ys//stringtable')
-local yarnProgram = playdate.datastore.read('ys//yarnprogram')
+local lineStorage = playdate.datastore.read('assets//data//playline//stringtable')
+local yarnProgram = playdate.datastore.read('assets//data//playline//yarnprogram')
 local lineOutput = ''
 local optionsOutput = {}
 
 MyStory = Dialogue(variableStorage, yarnProgram)
-MyStory:SetLineHandler(function(line, substitutions)
+MyStory.DefaultLineHandler = function(line, substitutions)
     print("Line: " .. line)
 
     assert(line ~= nil, "Line cannot be nil.")
@@ -24,12 +24,11 @@ MyStory:SetLineHandler(function(line, substitutions)
     assert(lineStorage[line] or ("No line found for: " .. line))
     local lineText = lineStorage[line]
     local formattedLineText = string.formatcs(lineText, substitutions)
-    print(formattedLineText)
     lineOutput = formattedLineText
+    return formattedLineText
+end
 
-end)
-MyStory:SetOptionsHandler(function(options)
-    print("Options:")
+MyStory.DefaultOptionsHandler = function(options)
     optionsOutput = {}
     assert(lineStorage ~= nil, "Line storage is not initialized.")
     for i, option in ipairs(options) do
@@ -42,7 +41,8 @@ MyStory:SetOptionsHandler(function(options)
             index = i,
             enabled = option.enabled}
     end
-end)
+    return optionsOutput
+end
 
 -- should this get moved into dialogue.lua as a default command handler?
 MyStory:SetCommandHandler(function(command, library)
