@@ -68,7 +68,7 @@ function Dialogue:ProgressCoroutine()
 end
 
 function Dialogue:Continue()
-    if not self.vm.executionState == 'Running' then
+    if not self.vm.executionState == 'Running' or self.coroutineRunning then
         return
     end
     self.vm:Continue()
@@ -94,3 +94,7 @@ function Dialogue:GetSaliencyOptionsForNodeGroup(nodeGroupName)
     return {}
 end
 
+function AddCommandHandler(commandName, commandFunction)
+    assert(self.library, "Library is not initialized.")
+    self.library:registerCommand(commandName, commandFunction)
+end

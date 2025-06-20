@@ -130,6 +130,7 @@ local standardLibrary =
                 while (playdate.getCurrentTimeMilliseconds() - startTime) < (ms) do
                     coroutine.yield()
                 end
+                print("Waited for " .. seconds .. " seconds.")
             end)
         end,
     }
@@ -146,6 +147,12 @@ function Library:init(useStandardLibrary)
 end
 
 function Library:getFunction(name)
+    local result = self.functions[name]
+    assert(result, "Function '" .. name .. "' not found in library.")
+    return result
+end
+
+function Library:getCommand(name)
     local result = self.functions[name]
     assert(result, "Function '" .. name .. "' not found in library.")
     return result
@@ -172,6 +179,15 @@ function Library:deregisterFunction(name)
     self.functions[name] = nil
 end
 
+function Library:registerCommand(name, command)
+    self.commands[name] = command
+end
+function Library:commandExists(name)
+    return self.commands[name] ~= nil
+end
+function Library:deregisterCommand(name)
+    self.commands[name] = nil
+end
 function GenerateUniqueVisitedVariableForNode(nodeName)
     return '$Yarn.Internal.Visiting.' .. nodeName
 end
