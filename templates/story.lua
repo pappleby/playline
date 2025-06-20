@@ -11,6 +11,7 @@ function string.formatcs(str, substitutions)
 end
 local variableStorage = {}
 local lineStorage = playdate.datastore.read('assets//data//playline//stringtable')
+local metadata = playdate.datastore.read('assets//data//playline//metadata')
 local yarnProgram = playdate.datastore.read('assets//data//playline//yarnprogram')
 local lineOutput = ''
 local optionsOutput = {}
@@ -49,7 +50,7 @@ MyStory:SetCommandHandler(function(command, library)
     local parsedCommand = SplitCommandText(command)
     local commandFunction = library.commands[parsedCommand.name]
     assert(commandFunction, "Command '" .. parsedCommand.name .. "' not found in library.")
-    
+
     local result = commandFunction(table.unpack(parsedCommand.params))
     if type(result) == "thread" then
         local wrapper = coroutine.wrap(function()
