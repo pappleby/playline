@@ -1,39 +1,101 @@
+import "CoreLibs/object"
+StringHelper = {
+    IsDigit = function(c)
+        return c~=nil and c == string.match(c, '%d')
+    end,
+    IsLetterOrDigit = function(c)
+        return c~=nil and c == string.match(c, '%w')
+    end,
+    IsWhitespace = function(c)
+        return c~=nil and c == string.match(c, '%s')
+    end,
+    IsBoolean = function(c)
+        return c~=nil and (c == 'true' or c == 'false')
+    end,
+    FindEndOfAlphanumeric = function(input, startIndex)
+        local _, endIndex = input:find('^%w+', startIndex)
+        return endIndex
+    end,
+    FindEndOfCurlyBraces = function(input, startIndex)
+        local _, endIndex = input:find('}', startIndex)
+        return endIndex
+    end,
+    FindEndOfQuotedString = function(input, startIndex)
+       startIndex = startIndex
+        while true do
+            local quotePos = input:find('"', startIndex + 1) -- skip the opening quote
+            if not quotePos then return nil end
+            local bsStart, bsEnd = input:find("\\*$", startIndex, quotePos - 1)
+            local bsCount = 0
+            if bsStart and bsEnd then
+                bsCount = bsEnd - bsStart + 1
+            end
+            if bsCount % 2 == 0 then
+                return quotePos
+            end
+            startIndex = quotePos + 1
+        end
+    end,
+    FindEndofNumber = function(input, startIndex)
+        local _, endIndex = input:find('^-?%d+', startIndex)
+        local _, endDecimalIndex = input:find('^%.%d+', endIndex + 1)
+        if endDecimalIndex ~= nil then
+            endIndex = endDecimalIndex
+        end
+        return endIndex
+    end,
+}
+class('StringReader').extends()
+function StringReader:init(input, output)
+    self.input = input
+    self.readIndex = 1
+    self.output = output or {}
+end
+function StringReader:Peek()
+    local text = self.input
+    local readIndex = self.readIndex
+    -- Read a single character from the text, nil if we reach the end.
+    if(readIndex > #text) then
+        return nil
+    end
+    local char = text:sub(readIndex, readIndex)
+    self.output[1] = char
+    return char
+end
+
+function StringReader:Read()
+    local c = self:Peek() -- This also updates the output
+    if c == nil then
+        return nil
+    end
+    self.readIndex = self.readIndex + 1
+    return c
+end
+
+function StringReader:SkipPastIndex(index)
+    self.readIndex = index + 1
+end
+
 function SplitCommandText(commandText)
-   local c = nil
-   local results = {
-    name = nil,
-    params = {}
-   }
-   local addNameOrParam = function(value)
+    local results = {
+        name = nil,
+        params = {}
+    }
+    local addNameOrParam = function(value)
         if results.name == nil then
             results.name = value
         else
             table.insert(results.params, value)
         end
-   end
-   local currentComponent = ''
-   local readIndex = 1
-   local peek = function()
-        -- Read a single character from the command text, nil if we reach the end.
-        if(readIndex > #commandText) then
-            return nil
-        end
-        local char = commandText:sub(readIndex, readIndex)
-        return char
-   end
-   local read = function()
-        c = peek()
-        if c == nil then
-            return nil
-        end
-        readIndex = readIndex + 1
-        return c
     end
+    local currentComponent = ''
+    local readerOutput = {nil}
+    local reader = StringReader(commandText, readerOutput)
 
-    
-    while (read()) ~= nil do
+    while (reader:Read()) ~= nil do
+        local c = readerOutput[1] -- Get the character read by the reader
         ---@diagnostic disable-next-line: param-type-mismatch
-        if c == string.match(c, '%s') then
+        if StringHelper.IsWhitespace(c) then
             if #currentComponent > 0 then
                 -- We've reached the end of a run of visible characters.
                 -- Add this run to the result list and prepare for the next one.
@@ -47,7 +109,7 @@ function SplitCommandText(commandText)
         elseif c == '"' then
             -- We've entered a quoted string!
             while true do
-                read()
+                reader:Read()
                 if c == nil then
                     -- Oops, we ended the input while parsing a quoted
                     -- string! Dump our current word immediately and return.
@@ -55,10 +117,10 @@ function SplitCommandText(commandText)
                     return results
                 elseif c == '\\' then
                     -- Possibly an escaped character!
-                    local next = peek()
+                    local next = reader:Peek()
                     if (next == '\\' or next == '"') then
                         -- It is! Skip the \ and use the character after it.
-                        read() -- Skip the escape character
+                        reader:Read() -- Skip the escape character
                         currentComponent = currentComponent .. next
                     else
                         -- Oops, an invalid escape. Add the \ and whatever is after it.
