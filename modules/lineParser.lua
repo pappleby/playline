@@ -6,6 +6,7 @@ class('LineParser').extends()
 
 function LineParser:init()
    self.markerProcessors = {}
+   self.internalIncrementingAttribute = 1
 end
 
 ---@enum LexerTokenType
@@ -44,6 +45,16 @@ end
 function LexerToken:Range()
     return self.End + 1 - self.Start
 end
+
+class('MarkupAttribute').extends()
+function MarkupAttribute:init(position, sourcePosition, length, name, properties)
+    self.Position = position
+    self.SourcePosition = sourcePosition
+    self.Length = length
+    self.Name = name
+    self.Properties = table.deepcopy(properties) -- TODO consider shallow copy here
+end
+
 
 function LineParser:lexMarkup(input)
     if(input == "") then
@@ -178,8 +189,65 @@ function LineParser:lexMarkup(input)
     return tokens
 end
 
-local CleanUpUnmatchedCloses = function(openNodes, unmatchedCloseNames, errors)
-    -- TODO this is not implemented yet
+-- this cleans up and rebalances the tree for misclosed or invalid closing patterns like the following:
+-- This [a] is [b] some markup [/a][/b] invalid structure.
+-- This [a] is [b] some [c] nested [/a] markup [/c] with [/b] invalid structure.
+-- [z] this [a] is [b] some [c] markup [d] with [e] both [/c][/e][/d][/a][/z] misclosed tags and double unclosable tags[/b]
+-- it is a variant of the adoption agency algorithm
+-- if true returned, caller should clear unmatchedCloseNames
+function LineParser:cleanUpUnmatchedCloses(openNodes, unmatchedCloseNames, errors)
+    local orphans = {}
+    -- while we still have unbalanced closes AND haven't hit the root of the tree
+    while #unmatchedCloseNames > 0 and #openNodes > 1 do
+        -- if the current top of the stack isn't one of the closes we will need to keep it around
+        -- otherwise we just remove it from the list of closes and keep walking back up the tree
+        local top = table.remove(openNodes)
+        -- need to check if we already have an id
+        -- if we do we don't want another one
+        -- this happens when an element is split multiple times
+        local found = false
+        for _, property in ipairs(top.properties) do
+            if(property.name == "_internalIncrementingProperty") then
+                found = true
+                break
+            end
+        end
+        if not found then
+            -- adding the tracking ID property into the attribute so that we can squish them back together later
+            table.insert(top.properties, {name = "_internalIncrementingProperty", value = self.internalIncrementingAttribute})
+            self.internalIncrementingAttribute = self.internalIncrementingAttribute + 1
+        end
+        if top.name ~= nil then
+            local removeSuccess = false
+            for i, name in ipairs(unmatchedCloseNames) do
+                if name == top.name then
+                    table.remove(unmatchedCloseNames, i)
+                    removeSuccess = true
+                    break
+                end
+            end
+            if not removeSuccess then
+                table.insert(orphans, top)
+            end
+        end
+        -- now at this point we should have no unmatched closes left
+        -- if we did it meant we popped all the way to the end of the stack and are at the root and STILL didn't find that close
+        -- at this point it's an error as they typoed the close marker
+        if(#unmatchedCloseNames > 0) then
+            for _, unmatched in ipairs(unmatchedCloseNames) do
+                table.insert(errors, {message = "asked to close ".. unmatched.. " markup but there is no corresponding opening. Is [/".. unmatched.."] a typo?", column = 0})
+                return true
+            end
+        end
+
+        -- now on the top of the stack we have the current common ancestor of all the orphans
+        -- we want to reparent them back onto the stack now as cousin clones of their original selves
+        for _, template in ipairs(orphans) do
+            local clone = {name = template.name, firstToken = template.firstToken, children = {}, properties = template.properties}
+            table.insert(openNodes[#openNodes].children, clone)
+            table.insert(openNodes, clone)
+        end
+    end
 end
 
 local TryNumberFromToken = function(input, token)
@@ -274,19 +342,191 @@ function LineParser:buildMarkupTreeFromTokens(tokens, input)
     while tokens[tokenIndex].Type ~= LexerTokenTypes.End do
         local tType = tokens[tokenIndex].Type
         local currentToken = tokens[tokenIndex]
-        if tType == LexerTokenTypes.Text then
+        if tType == LexerTokenTypes.Start then
+            goto finishTokenLoop -- we don't do anything with the start token, just skip it
+        elseif tType == LexerTokenTypes.End then
+            local clearneeded = self:cleanUpUnmatchedCloses(openNodes, unmatchedCloses, diagnostic)
+            if clearneeded then
+                unmatchedCloses = {}
+            end
+            goto finishTokenLoop
+        elseif tType == LexerTokenTypes.Text then
             -- we are adding text to the tree
             -- but first we need to make sure there aren't any closes left to clean up
             if #unmatchedCloses then
-                CleanUpUnmatchedCloses(openNodes, unmatchedCloses, diagnostic)
+                local clearneeded = self:cleanUpUnmatchedCloses(openNodes, unmatchedCloses, diagnostic)
+                if clearneeded then
+                    unmatchedCloses = {}
+                end
+                
             end
             local text = string.sub(input, currentToken.Start, currentToken.End)
             local node = {
                 text = text,
                 firstToken = currentToken,
+                children = {},
+                properties = {},
             }
             table.insert(openNodes[#openNodes].children, node)
+            goto finishTokenLoop
         elseif tType == LexerTokenTypes.OpenMarker then
+            -- we hit an open marker
+            -- we first want to see if this is part of a close marker
+            -- if it is then we can just wrap up the current root (or roots in the case of close all)
+            if comparePattern(tokens, tokenIndex, closeAllPattern) then
+                -- it's the close all marker
+                -- in this case though all we need to do though is just remove the stack from the list as we go through it
+                tokenIndex = tokenIndex + 2 -- equivilant to stream.Consume(2)
+                while #openNodes > 1 do
+                    local markupTreeNode = table.remove(openNodes)
+                    if markupTreeNode.name ~= nil then
+                        for i, value in ipairs(unmatchedCloses) do
+                            if value == markupTreeNode.name then
+                                table.remove(unmatchedCloses, i)
+                                break
+                            end
+                        end
+                    end
+                end
+                for _, unmatched in ipairs(unmatchedCloses) do
+                    table.insert(diagnostic, {message = "Asked to close ".. unmatched .." markup but there is no corresponding opening. Is [/".. unmatched .."] a typo?", column = 0})
+                end
+                unmatchedCloses = {}
+                goto finishTokenLoop
+            elseif comparePattern(tokens, tokenIndex, closeOpenAttributePattern) then
+                -- it's a close an open attribute marker
+                local closeIDToken = tokens[tokenIndex + 2]
+                local closeID = string.sub(input, closeIDToken.Start, closeIDToken.End)
+                -- eat the tokens we compared
+                tokenIndex = tokenIndex + 3
+                currentToken = tokens[tokenIndex]
+                -- ok now we need to work out what we do if they don't match
+                -- first up we need to get the current top of the stack
+                if #openNodes == 1 then
+                    -- this is an error, we can't close something when we only have the root node
+                    table.insert(diagnostic, {message = "Asked to close " .. closeID .. ", but we don't have an open marker for it.", column = currentToken.Start})
+                else
+                    -- if they have the same name we are in luck
+                    -- we can pop this bad boy off the stack right now and continue
+                    -- if not then we add this to the list of unmatched closes for later clean up and continue
+                    if(closeID == openNodes[#openNodes].name) then
+                        table.remove(openNodes)
+                    else
+                        table.insert(unmatchedCloses, closeID)
+                    end
+                end
+                goto finishTokenLoop
+            elseif comparePattern(tokens, tokenIndex, closeErrorPattern) then
+                local message = "Error parsing markup, detected invalid token ".. tokens[tokenIndex + 2].Type ..", following a close."
+                table.insert(diagnostic, {message = message, column = currentToken.Start})
+                goto finishTokenLoop
+            end
+            -- ok so now we are some variant of a regular open marker
+            -- in that case we have to be one of:
+            -- [ ID, [ ID =, [ nomarkup
+            -- or an error of: [ *
+
+            -- which means if the next token isn't an ID it's an error so let's handle that first  
+            if tokens[tokenIndex].Type ~= LexerTokenTypes.Identifier then
+                local message = "Error parsing markup, detected invalid token  " .. tokens[tokenIndex].Type .. ", following an open marker."
+                table.insert(diagnostic, {message = message, column = currentToken.Start})
+                goto finishTokenLoop
+            end
+            -- ok so now we are a valid form of an open marker
+            -- but before we can continue we need to make sure that the tree is correctly closed off
+            if #unmatchedCloses > 0 then
+                local clearneeded = self:cleanUpUnmatchedCloses(openNodes, unmatchedCloses, diagnostic)
+                if clearneeded then
+                    unmatchedCloses = {}
+                end
+            end
+
+            local idToken = tokens[tokenIndex]
+            local id = string.sub(input, idToken.Start, idToken.End)
+
+            -- there are two slightly weird variants we will want to handle now
+            -- the first is the nomarkup attribute, which completely changes the flow of the tool
+            if comparePattern(tokens, tokenIndex, openAttributePropertyLessPattern) then
+                if id == "nomarkup" then
+                    --  so to get here we are [ nomarkup ]
+                    -- which mean the first token after is 3 tokens away
+                    local tokenStart = tokens[tokenIndex]
+                    local firstTokenAfterNoMarkup = tokens[tokenIndex + 3] -- TODO double check if this should be 2 
+
+                    -- we spin in here eating tokens until we hit closeOpenAttributePattern
+                    -- when we do we stop and check if the id is nomarkupmarker
+                    -- if it is we stop and return that
+                    -- if we never find that we return an error instead
+                    local nm = nil
+                    while tokens[tokenIndex].Type ~= LexerTokenTypes.End do
+                        if comparePattern(tokens, tokenIndex, closeOpenAttributePattern) then
+                            --  [ / id ]
+                            local nmIDToken = tokens[tokenIndex + 2]
+                            if string.sub(input, nmIDToken.Start, nmIDToken.End) == "nomarkupmarker" then
+                                -- we have found the end of the nomarkup marker
+                                -- create a new text node
+                                -- assign it as the child of the markup node
+                                -- return this
+                                local text = {
+                                    text = string.sub(input, firstTokenAfterNoMarkup.Start, tokens[tokenIndex].End)
+                                }
+                                nm = {
+                                    name = "nomarkup",
+                                    firstToken = tokenStart,
+                                    children = {text},
+                                    properties = {},
+                                }
+
+                                --last step is to consume the tokens that represent [/nomarkup]
+                                tokenIndex = tokenIndex + 3
+                                break
+                            end
+                        end
+                        tokenIndex = tokenIndex + 1
+                    end
+                    if nm == nil then
+                        table.insert(diagnostic, {message = "we entered nomarkup mode but didn't find an exit token", column = tokenStart.Start})
+                    else
+                        table.insert(openNodes[#openNodes].children, nm)
+                    end
+                    goto finishTokenLoop
+                else
+                    -- we are a marker with no properties, [ ID ] the ideal case
+                    local completeMarker = {
+                        name = id,
+                        firstToken = idToken,
+                        children = {},
+                        properties = {},
+                    }
+                    table.insert(openNodes[#openNodes].children, completeMarker)
+                    table.insert(openNodes, completeMarker)
+                    -- we now need to consume the id and ] tokens
+                    tokenIndex = tokenIndex + 2
+                    goto finishTokenLoop
+                end
+
+
+            end
+
+            -- ok so we are now one of two options
+            -- a regular open marker (best case): [ ID (ID = Value)+ ]
+            -- or an open marker with a nameless property: [ (ID = Value)+ ]
+            local marker = {
+                name = id,
+                firstToken = idToken,
+                children = {},
+                properties = {},
+            }
+            table.insert(openNodes[#openNodes].children, marker)
+            table.insert(openNodes, marker)
+            if tokens[tokenIndex + 2].Type ~= LexerTokenTypes.Equals then 
+                -- we are part of a normal [ID id = value] group
+                -- we want to consume the [ and ID
+                -- so that the next token in the stream will be clean to handle id = value triples.
+                -- this way the [ ID = variant doesn't realise that it wasn't part of a normal [ ID id = value ] group
+                tokenIndex = tokenIndex + 1
+            end
+            goto finishTokenLoop
 
         elseif tType == LexerTokenTypes.Identifier then
             -- ok so we are now at an identifier
@@ -342,6 +582,7 @@ function LineParser:buildMarkupTreeFromTokens(tokens, input)
                 table.insert(diagnostic, {message = "Encountered an unexpected closing slash", column = currentToken.Start})
             end
         end
+        :: finishTokenLoop ::
         tokenIndex = tokenIndex + 1
     end
 
@@ -373,6 +614,90 @@ function LineParser:buildMarkupTreeFromTokens(tokens, input)
     return tree, diagnostic
 end
 
+function LineParser:walkAndProcessTree(root, builder, attributes, localeCode, diagnostics)
+        -- self.sibling keeps track of the last seen older sibling during tree walking.
+        -- This is necessary to prevent a bug with "Yes... which I would have shown [emotion=\"frown\" /] had [b]you[/b] not interrupted me."
+        -- where the b tag is a rewriter and the emotion tag is not.
+        -- in that case because previously we only kept the last fully processed non-replacement sibling the emotion tag would eat the whitespace AFTER the b tag had replaced itself
+    self.sibling = nil
+    self:walkTree(root, builder, attributes, localeCode, diagnostics, 0)
+end
+
+function LineParser:walkTree(root, builder, attributes, localeCode, diagnostics, offset)
+    if offset == nil then
+        offset = 0
+    end
+    local line = root.text
+    if line ~= nil then
+        -- if we are a text node
+        if self.sibling ~= nil then
+            -- and we have an older sibling
+            for _, property in ipairs(self.sibling.properties) do
+                if property.name == "trimwhitespace" and property.value == true then
+                    if #line > 0 and string.match(line[0], "%s") then
+                        line = string.sub(line, 2) -- trim the first character
+                    end
+                    break
+                end
+            end
+        end
+        -- finally if there are any escaped markup in the line we need to clean them up also
+        line = string.gsub(line, "\\%[", "[")
+        line = string.gsub(line, "\\%]", "]")
+        -- then we add ourselves to the growing line
+        table.insert(builder, line)
+        -- and make ourselve the new older sibling
+        self.sibling = root
+        return
+    end
+
+    -- we aren't text so we will need to handle all our children
+    -- we do this recursively
+    local childBuilder = {}
+    local childAttributes = {}
+    for _, child in ipairs(root.children) do
+        self:walkTree(child, childBuilder, childAttributes, localeCode, diagnostics, #builder + offset)
+    end
+    -- before we go any further if we are the root node that means we have finished and can just wrap up
+    if root.name == nil then
+        -- we are so we have nothing left to do, just add our children and be done
+        table.move(childBuilder, 1, #childBuilder, #builder + 1, builder)
+        table.move(childAttribute, 1, #childAttribute, #attributes + 1, attributes)
+        return
+    end
+
+    -- finally now our children have done their stuff so we can run our own rewriter if necessary
+    -- to do that we will need the combined finished string of all our children and their attributes   
+    local rewriter = self.markerProcessors[root.name]
+    if rewriter ~= nil then
+        -- we now need to do the rewrite
+        -- so in this case we need to give the rewriter the combined child string and it's attributes
+        -- because it is up to you to fix any attributes if you modify them
+        -- TODO this is probably messed up. No null handling for root.first token 
+        -- and the builder lengths should probably be the total string length, not the number of substrings in the tables
+        local attribute = MarkupAttribute(#builder + offset, root.firstToken.Start, #childBuilder, root,Name, root.Properties)
+        local newDiagnostics = rewriter:ProcessReplacementMarker(attribute, childBuilder, childAttributes, localeCode)
+        table.move(newDiagnostics, 1, #newDiagnostics, #diagnostics + 1, diagnostics)
+    else
+        -- we aren't a replacement marker
+        -- which means we need to add ourselves as a tag
+        -- the source position one is easy enough, that is just the position of the first token (wait you never added these you dingus)
+        -- we know the length of all the children text because of the childBuilder so that gives us our range
+        -- and we know our relative start because of our siblings text in the builder
+        local attribute = MarkupAttribute(#builder + offset, root.firstToken.Start, #childBuilder, root.name, root.properties)
+        table.insert(attributes, attribute)
+    end
+
+    -- ok now at this stage inside childBuilder we have a valid modified (if was necessary) string
+    -- and our attributes have been added, all we need to do is add this to our siblings and continue
+    table.insert(builder, table.concat(childBuilder));
+    table.move(childAttributes, 1, #childAttributes, #attributes + 1, attributes);
+
+    -- finally we make ourselves the most immediate oldest sibling
+    self.sibling = root;
+end
+
+
 function LineParser:ParseString(input, localeCode, addImplicitCharacterAttribute)
     local squish = true
     local sort = true
@@ -381,8 +706,39 @@ function LineParser:ParseString(input, localeCode, addImplicitCharacterAttribute
     -- TODO think about unicode normalization
     local tokens = self:lexMarkup(input)
     local parseResult, diagnostics = self:buildMarkupTreeFromTokens(tokens, input)
-    -- TODO IN PROGRESS: BuildMarkupTreeFromTokens (ln 1481 from LineParser.cs)
-    
+
+    if #diagnostics > 0 then
+        -- ok so at this point if parseResult.diagnostics is not empty we have lexing/parsing errors
+        -- it makes no sense to continue, just set the text to be the input so something exists
+        return {text = input, attributes = {}}, diagnostics
+    end
+    local builder = {}
+    local attributes = {}
+
+    self:walkAndProcessTree(parseResult, builder, attributes, localeCode, diagnostics)
+
+    if squish then
+        print("squish not implemented yet")
+    end
+
+    local finalText = table.concat(builder)
+    print(finalText)
+
+    if addImplicitCharacterAttribute then
+        print("addImplicitCharacterAttribute not implemented yet")
+        -- TODO add implicit character attribute
+    end
+
+    if(sort) then 
+        table.sort(attributes, function(a, b)
+            return a.SourcePosition > b.SourcePosition
+        end)
+    end
+
+    return {
+        text = finalText,
+        attributes = attributes
+    }, diagnostics
 end
 function LineParser:RegisterMarkerProcessor(attributeName, markerProcessor)
    assert(type(attributeName) == "string", "attributeName must be a string")
