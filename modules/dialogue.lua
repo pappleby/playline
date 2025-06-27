@@ -94,7 +94,7 @@ function Dialogue:GetSaliencyOptionsForNodeGroup(nodeGroupName)
     return {}
 end
 
-function AddCommandHandler(commandName, commandFunction)
+function Dialogue:AddCommandHandler(commandName, commandFunction)
     assert(self.library, "Library is not initialized.")
     self.library:registerCommand(commandName, commandFunction)
 end

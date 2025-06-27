@@ -11,27 +11,27 @@ end
 
 ---@enum LexerTokenType
 local LexerTokenTypes = {
-    Text = {},
-    OpenMarker = {},
-    CloseMarker = {},
-    CloseSlash = {},
-    Identifier = {},
-    Error = {},
-    Start = {},
-    End = {},
-    Equals = {},
-    StringValue = {},
-    NumberValue = {},
-    BooleanValue = {},
-    InterpolatedValue = {},
+    Text = "Text",
+    OpenMarker = "OpenMarker",
+    CloseMarker = "CloseMarker",
+    CloseSlash = "CloseSlash",
+    Identifier = "Identifier",
+    Error = "Error",
+    Start = "Start",
+    End = "End",
+    Equals = "Equals",
+    StringValue = "StringValue",
+    NumberValue = "NumberValue",
+    BooleanValue = "BooleanValue",
+    InterpolatedValue = "InterpolatedValue",
 }
 
 
 ---@enum LexerMode
 local LexerMode = {
-    Text = {},
-    Tag = {},
-    Value = {},
+    Text = "Text",
+    Tag = "Tag",
+    Value = "Value",
 }
 
 ---@class LexerToken
@@ -71,7 +71,7 @@ function LineParser:lexMarkup(input)
         local c = readerOutput[1] -- Get the character read by the reader
         if(mode == LexerMode.Text) then
             local isPreviousCharBackslash = (last.Type == LexerTokenTypes.Text and input[last.End] == "\\")
-            if(c == "[" and ~isPreviousCharBackslash) then
+            if(c == "[" and not isPreviousCharBackslash) then
                 last = LexerToken(LexerTokenTypes.OpenMarker, currentPosition, currentPosition)
                 table.insert(tokens, last)
                 mode = LexerMode.Tag
@@ -116,7 +116,6 @@ function LineParser:lexMarkup(input)
                     table.insert(tokens, last)
                     mode = LexerMode.Text
                 end
-                table.insert(tokens, last)
             end
         elseif(mode == LexerMode.Value) then
             -- we are in value mode now
@@ -290,7 +289,7 @@ end
 
 
 local comparePattern = function(tokens, startIndex, pattern)
-    if(#tokens <= pattern + startIndex - 1) then
+    if(#tokens <= #pattern + startIndex - 1) then
         return false
     end
     for i = 1, #pattern do
@@ -427,8 +426,8 @@ function LineParser:buildMarkupTreeFromTokens(tokens, input)
             -- or an error of: [ *
 
             -- which means if the next token isn't an ID it's an error so let's handle that first  
-            if tokens[tokenIndex].Type ~= LexerTokenTypes.Identifier then
-                local message = "Error parsing markup, detected invalid token  " .. tokens[tokenIndex].Type .. ", following an open marker."
+            if tokens[tokenIndex+1].Type ~= LexerTokenTypes.Identifier then
+                local message = "Error parsing markup, detected invalid token  " .. tokens[tokenIndex+1].Type .. ", following an open marker."
                 table.insert(diagnostic, {message = message, column = currentToken.Start})
                 goto finishTokenLoop
             end
@@ -441,7 +440,7 @@ function LineParser:buildMarkupTreeFromTokens(tokens, input)
                 end
             end
 
-            local idToken = tokens[tokenIndex]
+            local idToken = tokens[tokenIndex + 1]
             local id = string.sub(input, idToken.Start, idToken.End)
 
             -- there are two slightly weird variants we will want to handle now
@@ -534,7 +533,7 @@ function LineParser:buildMarkupTreeFromTokens(tokens, input)
             -- in all situations its the same
             -- we get the id, use that to make a new property
             -- we get the value and coorce an actual value from it
-            local id = string.sub(sub, currentToken.Start, currentToken.End)
+            local id = string.sub(input, currentToken.Start, currentToken.End)
             if comparePattern(tokens, tokenIndex, numberPropertyPattern) then
                 local value, valueString = TryNumberFromToken(input, tokens[tokenIndex + 2])
                 if value == fail then
@@ -645,7 +644,7 @@ function LineParser:walkTree(root, builder, attributes, localeCode, diagnostics,
         line = string.gsub(line, "\\%[", "[")
         line = string.gsub(line, "\\%]", "]")
         -- then we add ourselves to the growing line
-        table.insert(builder, line)
+        builder[1] = builder[1] .. line
         -- and make ourselve the new older sibling
         self.sibling = root
         return
@@ -653,16 +652,16 @@ function LineParser:walkTree(root, builder, attributes, localeCode, diagnostics,
 
     -- we aren't text so we will need to handle all our children
     -- we do this recursively
-    local childBuilder = {}
+    local childBuilder = {""}
     local childAttributes = {}
     for _, child in ipairs(root.children) do
-        self:walkTree(child, childBuilder, childAttributes, localeCode, diagnostics, #builder + offset)
+        self:walkTree(child, childBuilder, childAttributes, localeCode, diagnostics, #(builder[1]) + offset)
     end
     -- before we go any further if we are the root node that means we have finished and can just wrap up
     if root.name == nil then
         -- we are so we have nothing left to do, just add our children and be done
-        table.move(childBuilder, 1, #childBuilder, #builder + 1, builder)
-        table.move(childAttribute, 1, #childAttribute, #attributes + 1, attributes)
+        builder[1] = builder[1] .. childBuilder[1]
+        table.move(childAttributes, 1, #childAttributes, #attributes + 1, attributes)
         return
     end
 
@@ -674,8 +673,7 @@ function LineParser:walkTree(root, builder, attributes, localeCode, diagnostics,
         -- so in this case we need to give the rewriter the combined child string and it's attributes
         -- because it is up to you to fix any attributes if you modify them
         -- TODO this is probably messed up. No null handling for root.first token 
-        -- and the builder lengths should probably be the total string length, not the number of substrings in the tables
-        local attribute = MarkupAttribute(#builder + offset, root.firstToken.Start, #childBuilder, root,Name, root.Properties)
+        local attribute = MarkupAttribute(#(builder[1]) + offset, root.firstToken.Start, #(childBuilder[1]), root.name, root.properties)
         local newDiagnostics = rewriter:ProcessReplacementMarker(attribute, childBuilder, childAttributes, localeCode)
         table.move(newDiagnostics, 1, #newDiagnostics, #diagnostics + 1, diagnostics)
     else
@@ -684,17 +682,50 @@ function LineParser:walkTree(root, builder, attributes, localeCode, diagnostics,
         -- the source position one is easy enough, that is just the position of the first token (wait you never added these you dingus)
         -- we know the length of all the children text because of the childBuilder so that gives us our range
         -- and we know our relative start because of our siblings text in the builder
-        local attribute = MarkupAttribute(#builder + offset, root.firstToken.Start, #childBuilder, root.name, root.properties)
+        local attribute = MarkupAttribute(#(builder[1]) + offset, root.firstToken.Start, #(childBuilder[1]), root.name, root.properties)
         table.insert(attributes, attribute)
     end
 
     -- ok now at this stage inside childBuilder we have a valid modified (if was necessary) string
     -- and our attributes have been added, all we need to do is add this to our siblings and continue
-    table.insert(builder, table.concat(childBuilder));
+    builder[1] = builder[1] .. childBuilder[1]
     table.move(childAttributes, 1, #childAttributes, #attributes + 1, attributes);
 
     -- finally we make ourselves the most immediate oldest sibling
     self.sibling = root;
+end
+
+function LineParser:SquishSplitAttributes(attributes)
+        -- grab every attribute that has a _internalIncrementingProperty property
+        -- then for every attribute with the same value of that property we merge them
+        -- and finally remove the _internalIncrementingProperty property
+        local removals = {}
+        local merged = {}
+        for i, attribute in ipairs(attributes) do
+            local value = attribute.Properties["_internalIncrementingProperty"]
+            if value ~= nil then
+                local existingAttribute = merged[value]
+                if existingAttribute ~= nil then
+                    if existingAttribute.Position > attribute.Position then
+                        existingAttribute.Position = attribute.Position
+                    end
+                    existingAttribute.Length = existingAttribute.Length + attribute.Length
+                    merged[value] = existingAttribute
+                else
+                    merged[value] = attribute
+                end
+                table.insert(removals, i)
+            end
+        end
+        -- now we need to remove all the ones with _internalIncrementingProperty
+        table.sort(removals)
+        for i = #removals, 1, -1 do
+            table.remove(attributes, removals[i])
+        end
+        -- and add our merged attributes back in
+        for _, value in pairs(merged) do
+            table.insert(attributes, value)
+        end
 end
 
 
@@ -712,24 +743,38 @@ function LineParser:ParseString(input, localeCode, addImplicitCharacterAttribute
         -- it makes no sense to continue, just set the text to be the input so something exists
         return {text = input, attributes = {}}, diagnostics
     end
-    local builder = {}
+    local builder = {""}
     local attributes = {}
 
     self:walkAndProcessTree(parseResult, builder, attributes, localeCode, diagnostics)
 
     if squish then
-        print("squish not implemented yet")
+        self:SquishSplitAttributes(attributes)
     end
 
     local finalText = table.concat(builder)
     print(finalText)
 
     if addImplicitCharacterAttribute then
-        print("addImplicitCharacterAttribute not implemented yet")
-        -- TODO add implicit character attribute
+        local hasCharacterAttributeAlready = false
+        for _, attribute in ipairs(attributes) do
+            if attribute.Name == "character" then
+                hasCharacterAttributeAlready = true
+                break
+            end
+        end
+        if not hasCharacterAttributeAlready then
+            local characterMatch = string.match(finalText, "^[^:]*:%s*")
+            if characterMatch ~= nil then
+                local colonIndex = string.find(characterMatch, ":")
+                local characterName = string.sub(characterMatch, 1, colonIndex - 1)
+                local characterAttribute = MarkupAttribute(0, 0, #characterMatch, "character", {name = "name", value = characterName})
+                table.insert(attributes, characterAttribute)
+            end
+        end
     end
 
-    if(sort) then 
+    if(sort) then
         table.sort(attributes, function(a, b)
             return a.SourcePosition > b.SourcePosition
         end)
@@ -742,9 +787,9 @@ function LineParser:ParseString(input, localeCode, addImplicitCharacterAttribute
 end
 function LineParser:RegisterMarkerProcessor(attributeName, markerProcessor)
    assert(type(attributeName) == "string", "attributeName must be a string")
-   assert(type(markerProcessor) == "function", "markerProcessor must be a function")
-   assert(self.markerProcessors[attributeName] ~= nil, "A marker processor for ".. attributeName .. " has already been registered.")
-   self.markerProcessors[marker] = processor
+   assert(type(markerProcessor.ProcessReplacementMarker) == "function", "markerProcessor:ProcessReplacementMarker must be a function")
+   assert(self.markerProcessors[attributeName] == nil, "A marker processor for ".. attributeName .. " has already been registered.")
+   self.markerProcessors[attributeName] = markerProcessor
 end
 
 function LineParser:DeregisterMarkerProcessor(attributeName)

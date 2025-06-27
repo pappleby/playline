@@ -1,5 +1,6 @@
 import 'libraries/playline/modules/dialogue.lua'
 import 'libraries/playline/modules/utils.lua'
+import 'libraries/playline/modules/lineParser.lua'
 
 function string.formatcs(str, substitutions)
 	if #substitutions > 0 then
@@ -15,8 +16,32 @@ local metadata = playdate.datastore.read('assets//data//playline//metadata')
 local yarnProgram = playdate.datastore.read('assets//data//playline//yarnprogram')
 local lineOutput = ''
 local optionsOutput = {}
+local lineParser = LineParser()
+local boldRewritter = {
+    ProcessReplacementMarker = function(rewritter, attribute, childBuilder, childAttributes, localeCode)
+        print("Processing bold marker with attribute: ")
+        childBuilder[1] = string.format("*%s*", childBuilder[1])
+        return {}
+    end,
+}
+local italicRewritter = {
+    ProcessReplacementMarker = function(rewritter, attribute, childBuilder, childAttributes, localeCode)
+        print("Processing italic marker with attribute: ")
+        childBuilder[1] = string.format("_%s_", childBuilder[1])
+        return {}
+    end,
+}
+lineParser:RegisterMarkerProcessor("bold", boldRewritter)
+lineParser:RegisterMarkerProcessor("italic", italicRewritter)
 
 MyStory = Dialogue(variableStorage, yarnProgram)
+MyStory:AddCommandHandler("test_command", function(...)
+    local debugOutput = "Test command executed with arguments: "
+    for i, v in ipairs({...}) do
+        debugOutput = debugOutput .. i .. ": " .. tostring(v) .. ", "
+    end
+    print(debugOutput)
+end)
 MyStory.DefaultLineHandler = function(line, substitutions)
     print("Line: " .. line)
 
@@ -24,9 +49,12 @@ MyStory.DefaultLineHandler = function(line, substitutions)
     assert(lineStorage ~= nil, "Line storage is not initialized.")
     assert(lineStorage[line] or ("No line found for: " .. line))
     local lineText = lineStorage[line]
-    local formattedLineText = string.formatcs(lineText, substitutions)
-    lineOutput = formattedLineText
-    return formattedLineText
+    local expandedText = string.formatcs(lineText, substitutions)
+    local parseResult = lineParser:ParseString(expandedText, "en", metadata)
+
+    local attributes = parseResult.attributes
+    lineOutput = parseResult.text
+    return lineOutput
 end
 
 MyStory.DefaultOptionsHandler = function(options)
