@@ -36,7 +36,7 @@ StringHelper = {
             startIndex = quotePos + 1
         end
     end,
-    FindEndofNumber = function(input, startIndex)
+    FindEndOfNumber = function(input, startIndex)
         local _, endIndex = input:find('^-?%d+', startIndex)
         local _, endDecimalIndex = input:find('^%.%d+', endIndex + 1)
         if endDecimalIndex ~= nil then
@@ -109,7 +109,7 @@ function SplitCommandText(commandText)
         elseif c == '"' then
             -- We've entered a quoted string!
             while true do
-                reader:Read()
+                c = reader:Read()
                 if c == nil then
                     -- Oops, we ended the input while parsing a quoted
                     -- string! Dump our current word immediately and return.
