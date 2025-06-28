@@ -1,6 +1,6 @@
 import 'libraries/playline/modules/dialogue.lua'
 import 'libraries/playline/modules/utils.lua'
-import 'libraries/playline/modules/lineParser.lua'
+import 'libraries/playline/modules/lineProvider.lua'
 
 function string.formatcs(str, substitutions)
 	if #substitutions > 0 then
@@ -16,7 +16,7 @@ local metadata = playdate.datastore.read('assets//data//playline//metadata')
 local yarnProgram = playdate.datastore.read('assets//data//playline//yarnprogram')
 local lineOutput = ''
 local optionsOutput = {}
-local lineParser = LineParser()
+local lineProvider = LineProvider(lineStorage, metadata)
 local boldRewritter = {
     ProcessReplacementMarker = function(rewritter, attribute, childBuilder, childAttributes, localeCode)
         print("Processing bold marker with attribute: ")
@@ -31,8 +31,8 @@ local italicRewritter = {
         return {}
     end,
 }
-lineParser:RegisterMarkerProcessor("bold", boldRewritter)
-lineParser:RegisterMarkerProcessor("italic", italicRewritter)
+lineProvider:RegisterMarkerProcessor("bold", boldRewritter)
+lineProvider:RegisterMarkerProcessor("italic", italicRewritter)
 
 MyStory = Dialogue(variableStorage, yarnProgram)
 MyStory:AddCommandHandler("test_command", function(...)
@@ -42,18 +42,12 @@ MyStory:AddCommandHandler("test_command", function(...)
     end
     print(debugOutput)
 end)
-MyStory.DefaultLineHandler = function(line, substitutions)
-    print("Line: " .. line)
+MyStory.DefaultLineHandler = function(lineId, substitutions)
+    print("Line: " .. lineId)
+    assert(lineId ~= nil, "lineId cannot be nil.")
+    local lineInfo = lineProvider:GetLine(lineId, substitutions)
 
-    assert(line ~= nil, "Line cannot be nil.")
-    assert(lineStorage ~= nil, "Line storage is not initialized.")
-    assert(lineStorage[line] or ("No line found for: " .. line))
-    local lineText = lineStorage[line]
-    local expandedText = string.formatcs(lineText, substitutions)
-    local parseResult = lineParser:ParseString(expandedText, "en", metadata)
-
-    local attributes = parseResult.attributes
-    lineOutput = parseResult.text
+    lineOutput = lineInfo.text
     return lineOutput
 end
 
@@ -61,10 +55,8 @@ MyStory.DefaultOptionsHandler = function(options)
     optionsOutput = {}
     assert(lineStorage ~= nil, "Line storage is not initialized.")
     for i, option in ipairs(options) do
-        local optionText = lineStorage[option.lineId]
-        assert(optionText or ("No line found for: " .. line))
-
-        local formattedOptionText = string.formatcs(optionText, option.substitutions)
+        local optionTextInfo = lineProvider:GetLine(option.lineId, option.substitutions)
+        local formattedOptionText = optionTextInfo.text
         optionsOutput[i] = {
             text = (formattedOptionText),
             index = i,

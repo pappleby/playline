@@ -108,7 +108,7 @@ function LineParser:lexMarkup(input)
                     last = LexerToken(LexerTokenTypes.Identifier, currentPosition, endPos)
                     table.insert(tokens, last)
                     currentPosition = endPos
-                elseif(~StringHelper.IsWhitespace(c)) then
+                elseif(not StringHelper.IsWhitespace(c)) then
                     -- if we are whitespace we likely want to just continue because it's most likely just spacing between identifiers
                     -- the only time this isn't allowed is if they split the marker name, but that is a parser issue not a lexer issue
                     -- so basically if we encounter a non-alphanumeric or non-whitespace we error
@@ -204,16 +204,10 @@ function LineParser:cleanUpUnmatchedCloses(openNodes, unmatchedCloseNames, error
         -- need to check if we already have an id
         -- if we do we don't want another one
         -- this happens when an element is split multiple times
-        local found = false
-        for _, property in ipairs(top.properties) do
-            if(property.name == "_internalIncrementingProperty") then
-                found = true
-                break
-            end
-        end
-        if not found then
+        local hasInternalIncrementingProperty = top.properties["_internalIncrementingProperty"]
+        if hasInternalIncrementingProperty == nil then
             -- adding the tracking ID property into the attribute so that we can squish them back together later
-            table.insert(top.properties, {name = "_internalIncrementingProperty", value = self.internalIncrementingAttribute})
+            top.properties["_internalIncrementingProperty"] = self.internalIncrementingAttribute
             self.internalIncrementingAttribute = self.internalIncrementingAttribute + 1
         end
         if top.name ~= nil then
@@ -272,7 +266,9 @@ end
 
 local ValueFromToken = function(input, token)
     local valueString = string.sub(input, token.Start, token.End)
-    if(#valueString >= 2 and valueString[1] == "\"" and valueString[#valueString]  == "\"") then
+    local firstChar = valueString:sub(1, 1)
+    local lastChar = valueString:sub(#valueString, #valueString)
+    if(#valueString >= 2 and firstChar == "\"" and lastChar  == "\"") then
         -- if we are inside delimiters we will also need to remove any escaped characters
         -- and trim the enclosing quotes
         valueString = string.gsub(string.sub(valueString, 2, #valueString - 1), "\\\\", "")
@@ -518,7 +514,7 @@ function LineParser:buildMarkupTreeFromTokens(tokens, input)
             }
             table.insert(openNodes[#openNodes].children, marker)
             table.insert(openNodes, marker)
-            if tokens[tokenIndex + 2].Type ~= LexerTokenTypes.Equals then 
+            if tokens[tokenIndex + 2].Type ~= LexerTokenTypes.Equals then
                 -- we are part of a normal [ID id = value] group
                 -- we want to consume the [ and ID
                 -- so that the next token in the stream will be clean to handle id = value triples.
@@ -539,20 +535,20 @@ function LineParser:buildMarkupTreeFromTokens(tokens, input)
                 if value == fail then
                     table.insert(diagnostic, {message = "failed to convert the value " .. valueString .. " into a valid property (expected number)", column = currentToken.Start})
                 end
-                table.insert(openNodes[#openNodes].properties, {name = id, value = value})
+                openNodes[#openNodes].properties[id] =  value
             elseif comparePattern(tokens, tokenIndex, booleanPropertyPattern) then
                 local value, valueString = TryBoolFromToken(input, tokens[tokenIndex + 2])
                 if value == fail then
                     table.insert(diagnostic, {message = "failed to convert the value " .. valueString.. " into a valid property (expected boolean)", column = currentToken.Start})
                 end
-                table.insert(openNodes[#openNodes].properties, {name = id, value = value})
+                openNodes[#openNodes].properties[id] =  value
             elseif comparePattern(tokens, tokenIndex, stringPropertyPattern) then
                 local value = ValueFromToken(input, tokens[tokenIndex + 2])
-                table.insert(openNodes[#openNodes].properties, {name = id, value = value})
+                openNodes[#openNodes].properties[id] =  value
             elseif comparePattern(tokens, tokenIndex, interpolatedPropertyPattern) then
                 -- don't actually know what type this is but let's just assume it's a string
                 local value  = ValueFromInterpolatedToken(input, tokens[tokenIndex + 2])
-                table.insert(openNodes[#openNodes].properties, {name = id, value = value})
+                openNodes[#openNodes].properties[id] =  value
             else 
                 table.insert(diagnostic, {message = "Expected to find a property and it's value, but didn't", column = currentToken.Start})
                 return tree, diagnostic -- early exit, it's already broken, and right now, don't really care about full diagnostics
@@ -564,15 +560,9 @@ function LineParser:buildMarkupTreeFromTokens(tokens, input)
             if comparePattern(tokens, tokenIndex, selfClosingAttributeEndPattern) then
                 -- ok last step is to add the trimwhitespace attribute in here
                 local top = table.remove(openNodes)
-                local found = false
-                for _, property in ipairs(top.properties) do
-                    if( property.name == "trimwhitespace") then
-                        found = true
-                        break
-                    end
-                end
-                if not found then
-                    table.insert(top.properties, {name = "trimwhitespace", value = true})
+                local trimWhitespaceProp = top.properties.trimwhitespace
+                if trimWhitespaceProp == nil then
+                    top.properties.trimwhitespace =  true
                 end
                 tokenIndex = tokenIndex + 1 -- equivilant to stream.Consume(1)
             else
@@ -631,12 +621,10 @@ function LineParser:walkTree(root, builder, attributes, localeCode, diagnostics,
         -- if we are a text node
         if self.sibling ~= nil then
             -- and we have an older sibling
-            for _, property in ipairs(self.sibling.properties) do
-                if property.name == "trimwhitespace" and property.value == true then
-                    if #line > 0 and string.match(line[0], "%s") then
-                        line = string.sub(line, 2) -- trim the first character
-                    end
-                    break
+            local trimWhitespace = self.sibling.properties.trimwhitespace
+            if trimWhitespace then
+                if #line > 0 and string.match(line, "%s") then
+                    line = string.sub(line, 2) -- trim the first character
                 end
             end
         end
