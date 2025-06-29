@@ -16,7 +16,7 @@ local metadata = playdate.datastore.read('assets//data//playline//metadata')
 local yarnProgram = playdate.datastore.read('assets//data//playline//yarnprogram')
 local lineOutput = ''
 local optionsOutput = {}
-local lineProvider = LineProvider(lineStorage, metadata)
+local lineProvider = Playline.LineProvider(lineStorage, metadata, true)
 local boldRewritter = {
     ProcessReplacementMarker = function(rewritter, attribute, childBuilder, childAttributes, localeCode)
         print("Processing bold marker with attribute: ")

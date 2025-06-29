@@ -2,11 +2,15 @@ import "CoreLibs/object"
 import 'libraries/playline/modules/lineParser.lua'
 import 'libraries/playline/utilities/NumberPlurals.lua'
 
+Playline = Playline or {}
+
 local pluralRewritter = {}
 local ordinalRewritter = {}
+local selectRewritter = {}
 
-class('LineProvider').extends()
-function LineProvider:init(lineStorage, metadata, useBuiltInMarkerProcessors)
+Playline.LineProvider = {}
+class('LineProvider', nil, Playline).extends()
+function Playline.LineProvider:init(lineStorage, metadata, useBuiltInMarkerProcessors)
     self.LocaleCode = "en" -- placeholder until I think through how localization will work
     self.lineStorage = lineStorage
     self.metadata = metadata
@@ -15,10 +19,11 @@ function LineProvider:init(lineStorage, metadata, useBuiltInMarkerProcessors)
     if useBuiltInMarkerProcessors or useBuiltInMarkerProcessors == nil then
         self:RegisterMarkerProcessor("plural", pluralRewritter)
         self:RegisterMarkerProcessor("ordinal", ordinalRewritter)
+        self:RegisterMarkerProcessor("select", selectRewritter)
     end
 end
 
-function LineProvider:ExpandSubstitutions(text, substitutions)
+function Playline.LineProvider:ExpandSubstitutions(text, substitutions)
     if #substitutions > 0 then
         for k,v in ipairs(substitutions) do
             text = string.gsub(text, "{"..(k-1).."}", tostring(v));
@@ -27,7 +32,7 @@ function LineProvider:ExpandSubstitutions(text, substitutions)
     return text;
 end
 
-function LineProvider:GetLine(lineId, substitutions)
+function Playline.LineProvider:GetLine(lineId, substitutions)
     -- todo: handle shadowlines here
     local metadata = self.metadata[lineId] or {}
     local lineText = self.lineStorage[lineId]
@@ -44,11 +49,11 @@ function LineProvider:GetLine(lineId, substitutions)
     }
 end
 
-function LineProvider:RegisterMarkerProcessor(markerName, rewritter)
+function Playline.LineProvider:RegisterMarkerProcessor(markerName, rewritter)
     self.lineParser:RegisterMarkerProcessor(markerName, rewritter)
 end
 
-function LineProvider:DeregisterMarkerProcessor(markerName)
+function Playline.LineProvider:DeregisterMarkerProcessor(markerName)
     self.lineParser:DeregisterMarkerProcessor(markerName)
 end
 
@@ -86,6 +91,17 @@ function ordinalRewritter:ProcessReplacementMarker(attribute, stringWrapper, chi
     if not replacement then
         return {{message = "No replacement found for case: " .. ordinalCase, column = attribute.SourcePosition}}
     end
+    stringWrapper[1] = replaceUnescapedPercent(replacement, value)
+    return {}
+end
+
+function selectRewritter:ProcessReplacementMarker(attribute, stringWrapper, childAttributes, localeCode)
+    local value  = attribute.Properties.value
+    local replacement = attribute.Properties[tostring(value)]
+    if not replacement then
+        return {{message = "No replacement found for case: " .. value, column = attribute.SourcePosition}}
+    end
+
     stringWrapper[1] = replaceUnescapedPercent(replacement, value)
     return {}
 end
