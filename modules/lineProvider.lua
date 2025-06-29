@@ -6,13 +6,16 @@ local pluralRewritter = {}
 local ordinalRewritter = {}
 
 class('LineProvider').extends()
-function LineProvider:init(lineStorage, metadata)
+function LineProvider:init(lineStorage, metadata, useBuiltInMarkerProcessors)
     self.LocaleCode = "en" -- placeholder until I think through how localization will work
     self.lineStorage = lineStorage
     self.metadata = metadata
     self.lineParser = LineParser()
-    self:RegisterMarkerProcessor("plural", pluralRewritter)
-    self:RegisterMarkerProcessor("ordinal", ordinalRewritter)
+
+    if useBuiltInMarkerProcessors or useBuiltInMarkerProcessors == nil then
+        self:RegisterMarkerProcessor("plural", pluralRewritter)
+        self:RegisterMarkerProcessor("ordinal", ordinalRewritter)
+    end
 end
 
 function LineProvider:ExpandSubstitutions(text, substitutions)
