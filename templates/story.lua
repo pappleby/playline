@@ -34,7 +34,7 @@ local italicRewritter = {
 lineProvider:RegisterMarkerProcessor("bold", boldRewritter)
 lineProvider:RegisterMarkerProcessor("italic", italicRewritter)
 
-MyStory = Dialogue(variableStorage, yarnProgram)
+MyStory = Playline.Dialogue(variableStorage, yarnProgram)
 MyStory:AddCommandHandler("test_command", function(...)
     local debugOutput = "Test command executed with arguments: "
     for i, v in ipairs({...}) do

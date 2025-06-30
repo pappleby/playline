@@ -1,5 +1,7 @@
 import "CoreLibs/object"
 
+Playline = Playline or {}
+
 local standardLibrary = 
 {
     functions = {
@@ -136,29 +138,28 @@ local standardLibrary =
     }
 }
 
+Playline.Library = {}
 ---@class Library
-class('Library').extends()
-function Library:init(useStandardLibrary)
-    self.functions = {}
-    self.commands = {}
+class('Library', {functions={}, commands={}}, Playline).extends()
+function Playline.Library:init(useStandardLibrary)
     if useStandardLibrary then
         self:importLibrary(standardLibrary)
     end
 end
 
-function Library:getFunction(name)
+function Playline.Library:getFunction(name)
     local result = self.functions[name]
     assert(result, "Function '" .. name .. "' not found in library.")
     return result
 end
 
-function Library:getCommand(name)
+function Playline.Library:getCommand(name)
     local result = self.functions[name]
     assert(result, "Function '" .. name .. "' not found in library.")
     return result
 end
 
-function Library:importLibrary(other)
+function Playline.Library:importLibrary(other)
     for name, func in pairs(other.functions) do
         self.functions[name] = func
     end
@@ -167,27 +168,29 @@ function Library:importLibrary(other)
     end
 end
 
-function Library:registerFunction(name, func)
+function Playline.Library:registerFunction(name, func)
     self.functions[name] = func
 end
 
-function Library:functionExists(name)
+function Playline.Library:functionExists(name)
     return self.functions[name] ~= nil
 end
 
-function Library:deregisterFunction(name)
+function Playline.Library:deregisterFunction(name)
     self.functions[name] = nil
 end
 
-function Library:registerCommand(name, command)
+function Playline.Library:registerCommand(name, command)
     self.commands[name] = command
 end
-function Library:commandExists(name)
+function Playline.Library:commandExists(name)
     return self.commands[name] ~= nil
 end
-function Library:deregisterCommand(name)
+function Playline.Library:deregisterCommand(name)
     self.commands[name] = nil
 end
+
+-- TODO: this should probably be move to a utils file
 function GenerateUniqueVisitedVariableForNode(nodeName)
     return '$Yarn.Internal.Visiting.' .. nodeName
 end

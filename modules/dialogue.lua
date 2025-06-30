@@ -2,11 +2,13 @@ import 'CoreLibs/object'
 import 'CoreLibs/string'
 import 'library.lua'
 import 'vm.lua'
+Playline = Playline or {}
 
+Playline.Dialogue = {}
 ---@class Dialogue
-class('Dialogue').extends()
-function Dialogue:init(variableStorage, yarnProgram)
-    self.library = Library(true)
+class('Dialogue', nil, Playline).extends()
+function Playline.Dialogue:init(variableStorage, yarnProgram)
+    self.library = Playline.Library(true)
     self.program = yarnProgram
     self.variableStorage = variableStorage
     variableStorage.smartVariableEvaluator = self
@@ -21,64 +23,64 @@ function Dialogue:init(variableStorage, yarnProgram)
     self.coroutineRunning = nil
 end
 
-function Dialogue:SetLineHandler(lineHandler)
+function Playline.Dialogue:SetLineHandler(lineHandler)
     self.vm.lineHandler = lineHandler
 end
 
-function Dialogue:SetOptionsHandler(optionsHandler)
+function Playline.Dialogue:SetOptionsHandler(optionsHandler)
     self.vm.optionsHandler = optionsHandler
 end
 
-function Dialogue:SetCommandHandler(commandHandler)
+function Playline.Dialogue:SetCommandHandler(commandHandler)
     self.vm.commandHandler = commandHandler
 end
 
-function Dialogue:GetNodeVisitCount(nodeName)
+function Playline.Dialogue:GetNodeVisitCount(nodeName)
     local variableName = GenerateUniqueVisitedVariableForNode(nodeName)
     local count = self.variableStorage:getVariable(variableName) or 0
     return count
 end
 
-function Dialogue:IsNodeVisited(nodeName)
+function Playline.Dialogue:IsNodeVisited(nodeName)
     return self:GetNodeVisitCount(nodeName) > 0
 end
 
-function Dialogue:SetNode(nodeName)
+function Playline.Dialogue:SetNode(nodeName)
     self.vm:SetNode(nodeName, true)
 end
 
-function Dialogue:SetSelectedOption(selectedOptionID)
+function Playline.Dialogue:SetSelectedOption(selectedOptionID)
     self.vm:SetSelectedOption(selectedOptionID);
 end
 
-function Dialogue:SetCoroutineRunning(coroutineRunning)
+function Playline.Dialogue:SetCoroutineRunning(coroutineRunning)
     self.coroutineRunning = coroutineRunning
 end
 
-function Dialogue:FinishCoroutine()
+function Playline.Dialogue:FinishCoroutine()
     self.coroutineRunning = nil
     self.vm:Continue()
 end
 
-function Dialogue:ProgressCoroutine()
+function Playline.Dialogue:ProgressCoroutine()
     if self.coroutineRunning then
         self.coroutineRunning()
         return
     end
 end
 
-function Dialogue:Continue()
+function Playline.Dialogue:Continue()
     if not self.vm.executionState == 'Running' or self.coroutineRunning then
         return
     end
     self.vm:Continue()
 end
 
-function Dialogue:Stop()
+function Playline.Dialogue:Stop()
     self.vm:Stop()
 end
 
-function Dialogue:GetHeaderValue(nodeName, headerName)
+function Playline.Dialogue:GetHeaderValue(nodeName, headerName)
     local node = self.program.nodes[nodeName]
     assert(node, "Node '" .. nodeName .. "' not found in program.")
     for key,value in pairs(node.headers) do
@@ -88,13 +90,13 @@ function Dialogue:GetHeaderValue(nodeName, headerName)
     end
 end
 
-function Dialogue:GetSaliencyOptionsForNodeGroup(nodeGroupName)
+function Playline.Dialogue:GetSaliencyOptionsForNodeGroup(nodeGroupName)
     ---Not implemented yet
     assert(false, "GetSaliencyOptionsForNodeGroup is not implemented yet.")
     return {}
 end
 
-function Dialogue:AddCommandHandler(commandName, commandFunction)
+function Playline.Dialogue:AddCommandHandler(commandName, commandFunction)
     assert(self.library, "Library is not initialized.")
     self.library:registerCommand(commandName, commandFunction)
 end
