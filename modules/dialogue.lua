@@ -28,8 +28,36 @@ end
 
 function Playline.Dialogue:handleLine(lineId, substitutions)
     local lineInfo = self.lineProvider:GetLine(lineId, substitutions)
+    local runLineCoroutines = {}
     for _, presenter in ipairs(self.dialoguePresenters) do
-        presenter:RunLine(lineInfo)
+        local runLineCoroutine = presenter:RunLine(lineInfo)
+        if type(runLineCoroutine) == "thread" then
+            table.insert(runLineCoroutines, runLineCoroutine)
+        end
+    end
+    if #runLineCoroutines > 0 then
+        local lineCancellationToken = {NextLineToken = false, HurryUpToken = false }
+        local wrapper = coroutine.wrap(function()
+            local firstTick = true
+            local runningCoroutineCount = #runLineCoroutines
+            while runningCoroutineCount > 0 do
+                runningCoroutineCount = 0
+                for _, runLineCoroutine in ipairs(runLineCoroutines) do
+                    if coroutine.status(runLineCoroutine) ~= "dead" then
+                        coroutine.resume(runLineCoroutine, lineCancellationToken)
+                        runningCoroutineCount += 1
+                    end
+                end
+                if firstTick then
+                    firstTick = false
+                else
+                   coroutine.yield()
+                end
+            end
+
+            self:FinishCoroutine()
+        end)
+        self:SetCoroutineRunning(wrapper)
     end
 end
 
