@@ -34,7 +34,7 @@ local italicRewritter = {
 lineProvider:RegisterMarkerProcessor("bold", boldRewritter)
 lineProvider:RegisterMarkerProcessor("italic", italicRewritter)
 
-MyStory = Playline.Dialogue(variableStorage, yarnProgram)
+MyStory = Playline.Dialogue(variableStorage, yarnProgram, lineProvider)
 MyStory:AddCommandHandler("test_command", function(...)
     local debugOutput = "Test command executed with arguments: "
     for i, v in ipairs({...}) do
@@ -42,14 +42,6 @@ MyStory:AddCommandHandler("test_command", function(...)
     end
     print(debugOutput)
 end)
-MyStory.DefaultLineHandler = function(lineId, substitutions)
-    print("Line: " .. lineId)
-    assert(lineId ~= nil, "lineId cannot be nil.")
-    local lineInfo = lineProvider:GetLine(lineId, substitutions)
-
-    lineOutput = lineInfo.text
-    return lineOutput
-end
 
 MyStory.DefaultOptionsHandler = function(options)
     optionsOutput = {}

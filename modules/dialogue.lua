@@ -7,10 +7,11 @@ Playline = Playline or {}
 Playline.Dialogue = {}
 ---@class Dialogue
 class('Dialogue', nil, Playline).extends()
-function Playline.Dialogue:init(variableStorage, yarnProgram)
+function Playline.Dialogue:init(variableStorage, yarnProgram, lineProvider)
     self.library = Playline.Library(true)
     self.program = yarnProgram
     self.variableStorage = variableStorage
+    self.lineProvider = lineProvider
     variableStorage.smartVariableEvaluator = self
     self.vm = VM(self.library, yarnProgram, variableStorage)
     self.smartVariableVM = {} -- Placeholder for smart variable VM
@@ -21,10 +22,19 @@ function Playline.Dialogue:init(variableStorage, yarnProgram)
         self:GetNodeVisitCount(nodeName)
     end)
     self.coroutineRunning = nil
+    self.dialoguePresenters = {}
+    self.vm.lineHandler = function(...) self:handleLine(...) end
 end
 
-function Playline.Dialogue:SetLineHandler(lineHandler)
-    self.vm.lineHandler = lineHandler
+function Playline.Dialogue:handleLine(lineId, substitutions)
+    local lineInfo = self.lineProvider:GetLine(lineId, substitutions)
+    for _, presenter in ipairs(self.dialoguePresenters) do
+        presenter:RunLine(lineInfo)
+    end
+end
+
+function Playline.Dialogue:AddDialoguePresenter(presenter)
+    table.insert(self.dialoguePresenters, presenter)
 end
 
 function Playline.Dialogue:SetOptionsHandler(optionsHandler)
