@@ -14,7 +14,6 @@ local variableStorage = {}
 local lineStorage = playdate.datastore.read('assets//data//playline//stringtable')
 local metadata = playdate.datastore.read('assets//data//playline//metadata')
 local yarnProgram = playdate.datastore.read('assets//data//playline//yarnprogram')
-local lineOutput = ''
 local optionsOutput = {}
 local lineProvider = Playline.LineProvider(lineStorage, metadata, true)
 local boldRewritter = {
@@ -35,7 +34,7 @@ lineProvider:RegisterMarkerProcessor("bold", boldRewritter)
 lineProvider:RegisterMarkerProcessor("italic", italicRewritter)
 
 MyStory = Playline.Dialogue(variableStorage, yarnProgram, lineProvider)
-MyStory:AddCommandHandler("test_command", function(...)
+MyStory:RegisterCommand("test_command", function(...)
     local debugOutput = "Test command executed with arguments: "
     for i, v in ipairs({...}) do
         debugOutput = debugOutput .. i .. ": " .. tostring(v) .. ", "
@@ -54,34 +53,5 @@ MyStory.DefaultOptionsHandler = function(options)
             index = i,
             enabled = option.enabled}
     end
-    return optionsOutput
-end
-
--- should this get moved into dialogue.lua as a default command handler?
-MyStory:SetCommandHandler(function(command, library)
-    local parsedCommand = SplitCommandText(command)
-    local commandFunction = library.commands[parsedCommand.name]
-    assert(commandFunction, "Command '" .. parsedCommand.name .. "' not found in library.")
-
-    local result = commandFunction(table.unpack(parsedCommand.params))
-    if type(result) == "thread" then
-        local wrapper = coroutine.wrap(function()
-            while coroutine.status(result) ~= "dead" do
-                coroutine.resume(result)
-                coroutine.yield()
-            end
-            MyStory:FinishCoroutine()
-        end)
-        MyStory:SetCoroutineRunning(wrapper)
-    else
-        MyStory:Continue()
-    end
-end)
-
-function MyStory:GetCurrentLine()
-    return lineOutput
-end
-
-function MyStory:GetCurrentOptions()
     return optionsOutput
 end

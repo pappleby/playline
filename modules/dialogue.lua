@@ -24,6 +24,7 @@ function Playline.Dialogue:init(variableStorage, yarnProgram, lineProvider)
     self.coroutineRunning = nil
     self.dialoguePresenters = {}
     self.vm.lineHandler = function(...) self:handleLine(...) end
+    self.vm.commandHandler = function(...) self:handleCommand(...) end
 end
 
 function Playline.Dialogue:handleLine(lineId, substitutions)
@@ -67,10 +68,6 @@ end
 
 function Playline.Dialogue:SetOptionsHandler(optionsHandler)
     self.vm.optionsHandler = optionsHandler
-end
-
-function Playline.Dialogue:SetCommandHandler(commandHandler)
-    self.vm.commandHandler = commandHandler
 end
 
 function Playline.Dialogue:GetNodeVisitCount(nodeName)
@@ -134,7 +131,31 @@ function Playline.Dialogue:GetSaliencyOptionsForNodeGroup(nodeGroupName)
     return {}
 end
 
-function Playline.Dialogue:AddCommandHandler(commandName, commandFunction)
+function Playline.Dialogue:RegisterCommand(commandName, commandFunction)
     assert(self.library, "Library is not initialized.")
     self.library:registerCommand(commandName, commandFunction)
+end
+
+function Playline.Dialogue:handleCommand(command, library)
+    local parsedCommand = SplitCommandText(command)
+    local commandFunction = library.commands[parsedCommand.name]
+    assert(commandFunction, "Command '" .. parsedCommand.name .. "' not found in library.")
+
+    local result = commandFunction(table.unpack(parsedCommand.params))
+    if type(result) == "thread" then
+        local wrapper = coroutine.wrap(function()
+            while coroutine.status(result) ~= "dead" do
+                coroutine.resume(result)
+                coroutine.yield()
+            end
+            MyStory:FinishCoroutine()
+        end)
+        MyStory:SetCoroutineRunning(wrapper)
+    else
+        MyStory:Continue()
+    end
+end
+
+function Playline.Dialogue:OverrideCommandHandler(commandHandler)
+    self.vm.commandHandler = commandHandler
 end
