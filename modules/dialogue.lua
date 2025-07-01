@@ -25,6 +25,7 @@ function Playline.Dialogue:init(variableStorage, yarnProgram, lineProvider)
     self.dialoguePresenters = {}
     self.vm.lineHandler = function(...) self:handleLine(...) end
     self.vm.commandHandler = function(...) self:handleCommand(...) end
+    self.vm.optionsHandler = function(...) self:handleOptions(...) end
 end
 
 function Playline.Dialogue:handleLine(lineId, substitutions)
@@ -45,7 +46,10 @@ function Playline.Dialogue:handleLine(lineId, substitutions)
                 runningCoroutineCount = 0
                 for _, runLineCoroutine in ipairs(runLineCoroutines) do
                     if coroutine.status(runLineCoroutine) ~= "dead" then
-                        coroutine.resume(runLineCoroutine, lineCancellationToken)
+                        local ok, err = coroutine.resume(runLineCoroutine, lineCancellationToken)
+                        if not ok then
+                            print("Coroutine error:", err)
+                        end
                         runningCoroutineCount += 1
                     end
                 end
@@ -62,12 +66,28 @@ function Playline.Dialogue:handleLine(lineId, substitutions)
     end
 end
 
-function Playline.Dialogue:AddDialoguePresenter(presenter)
-    table.insert(self.dialoguePresenters, presenter)
+function Playline.Dialogue:handleOptions(options)
+    local optionsOutput = {}
+    for i, option in ipairs(options) do
+        local optionTextInfo = self.lineProvider:GetLine(option.lineId, option.substitutions)
+        local formattedOptionText = optionTextInfo.text
+        optionsOutput[i] = {
+            text = (formattedOptionText),
+            index = i,
+            enabled = option.enabled}
+    end
+
+    for _, presenter in ipairs(self.dialoguePresenters) do
+        if(presenter.RunOptions ~= nil) then
+            -- For now don't support aysync options presenters
+            -- TODO: Support async options presenters
+            presenter:RunOptions(optionsOutput)
+        end
+    end
 end
 
-function Playline.Dialogue:SetOptionsHandler(optionsHandler)
-    self.vm.optionsHandler = optionsHandler
+function Playline.Dialogue:AddDialoguePresenter(presenter)
+    table.insert(self.dialoguePresenters, presenter)
 end
 
 function Playline.Dialogue:GetNodeVisitCount(nodeName)
