@@ -146,3 +146,23 @@ function SplitCommandText(commandText)
      end
     return results
 end
+
+function ResumeThreadsAndYieldUntilAllDead(threads, paramsArray)
+    local runningThreadCount = #threads
+    while runningThreadCount > 0 do
+        runningThreadCount = 0
+        for i = #threads, 1, -1 do
+            local thread = threads[i]
+            if coroutine.status(thread) ~= "dead" then
+                local ok, err = coroutine.resume(thread, table.unpack(paramsArray or {}))
+                if not ok then
+                    print("Coroutine error:", err)
+                end
+                runningThreadCount += 1
+            end
+        end
+        if runningThreadCount > 0 then
+            coroutine.yield() -- Yield to allow other coroutines to run
+        end
+    end
+end
