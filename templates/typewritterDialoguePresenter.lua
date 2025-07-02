@@ -2,18 +2,25 @@ import 'CoreLibs/object'
 import 'CoreLibs/graphics'
 
 import 'libraries/playline/modules/dialoguePresenterBase.lua'
+import 'libraries/playline/modules/utils.lua'
 
 local gfx <const> = playdate.graphics
 
 Playline = Playline or {}
 Playline.Defaults = Playline.Defaults or {}
 
+local function convertCpsToSpc(charactersPerSecond)
+    return 1.0 / charactersPerSecond;
+end
+
 class('TypewritterDialoguePresenter', nil, Playline.Defaults).extends(Playline.DialoguePresenterBase)
-function Playline.Defaults.TypewritterDialoguePresenter:init(textImage, onStart)
+function Playline.Defaults.TypewritterDialoguePresenter:init(textImage, onStart, charactersPerSecond)
     Playline.Defaults.TypewritterDialoguePresenter.super.init(self)
     self.textImage = textImage
     self.onStart = onStart or function() end
-
+    self.inProgressCoroutines = {}
+    self.ActionMarkupHandlers = {}
+    self.CharactersPerSecond = charactersPerSecond or 15
     local width, height = textImage:getSize()
     self.textImageRect = playdate.geometry.rect.new(0, 0, width, height)
 end
@@ -34,21 +41,44 @@ function Playline.Defaults.TypewritterDialoguePresenter:RunLine(lineInfo)
     print("Running line: " .. lineInfo.text)
     self.onStart()
     local line = lineInfo.text
+    local lineSecondsPerCharacter = convertCpsToSpc(self.CharactersPerSecond)
+    local modifyLineSpeedFn = function(cps)
+        if cps then
+            lineSecondsPerCharacter = convertCpsToSpc(cps)
+        else
+            lineSecondsPerCharacter = convertCpsToSpc(self.CharactersPerSecond)
+        end
+    end
     if line then
         return coroutine.create(function(lineCancellationToken)
             local i = 1
+            -- Start with a full time budget so that we immediately show the first character
+            local accumulatedDelay = lineSecondsPerCharacter;
+            for _, action in ipairs(self.ActionMarkupHandlers) do
+                action:OnLineDisplayBegin(lineInfo)
+            end
+
             while i <= #line do
-                local startTime = playdate.getCurrentTimeMilliseconds()
+                while(not lineCancellationToken.HurryUpToken
+                    and accumulatedDelay < lineSecondsPerCharacter) do
+                        local timeBeforeYield = playdate.getCurrentTimeMilliseconds()
+                        coroutine.yield()
+                        local timeAfterYield = playdate.getCurrentTimeMilliseconds()
+                        accumulatedDelay += (timeAfterYield - timeBeforeYield) / 1000 -- convert to seconds
+                end
+
+                for _, action in ipairs(self.ActionMarkupHandlers) do
+                    local actionResult = action:OnCharacterWillAppear(i, lineInfo, lineCancellationToken, modifyLineSpeedFn)
+                    if type(actionResult) == "thread" then
+                        table.insert(self.inProgressCoroutines, actionResult)
+                    end
+                end
+
+                ResumeThreadsAndYieldUntilAllDead(self.inProgressCoroutines, {lineCancellationToken})
+
                 self:writeToImage(line, i)
-                local ms = 60
-                if lineCancellationToken.HurryUpToken then
-                   break
-                end
-                while (not lineCancellationToken.HurryUpToken
-                        and not lineCancellationToken.NextLineToken
-                        and (playdate.getCurrentTimeMilliseconds() - startTime) < ms) do
-                    lineCancellationToken = coroutine.yield()
-                end
+                
+                accumulatedDelay -= lineSecondsPerCharacter;
                 i += 1
             end
             self:writeToImage(line, #line)
@@ -56,7 +86,8 @@ function Playline.Defaults.TypewritterDialoguePresenter:RunLine(lineInfo)
             coroutine.yield()
         end)
     end
-
-
 end
 
+function Playline.Defaults.TypewritterDialoguePresenter:AddActionMarkupHandler(handler)
+    table.insert(self.ActionMarkupHandlers, handler)
+end
