@@ -764,7 +764,7 @@ function LineParser:ParseString(input, localeCode, addImplicitCharacterAttribute
 
     if(sort) then
         table.sort(attributes, function(a, b)
-            return a.SourcePosition > b.SourcePosition
+            return a.SourcePosition < b.SourcePosition
         end)
     end
 
