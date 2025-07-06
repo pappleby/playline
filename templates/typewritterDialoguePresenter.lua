@@ -85,8 +85,10 @@ function Playline.Defaults.TypewritterDialoguePresenter:RunLine(lineInfo)
 
                 pu.ResumeThreadsAndYieldUntilAllDead(self.inProgressCoroutines, {lineCancellationToken})
 
-                self:writeToImage(line, i)
-                
+                if not lineCancellationToken.HurryUpToken then
+                    self:writeToImage(line, i)
+                end
+
                 accumulatedDelay -= lineSecondsPerCharacter;
                 i += 1
             end
