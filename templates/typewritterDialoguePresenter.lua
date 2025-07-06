@@ -32,7 +32,8 @@ function Playline.Defaults.TypewritterDialoguePresenter:init(textImage, onStart,
 end
 
 function Playline.Defaults.TypewritterDialoguePresenter:writeToImage(lineText, charsToShow)
-    local writableLine = lineText:sub(1, charsToShow)
+    local writableLine = ""
+    if lineText:len() > 0 then writableLine = lineText:sub(1, charsToShow) end
     print("Typewritter: " .. writableLine)
     self.textImage:clear(gfx.kColorClear)
     gfx.pushContext(self.textImage)
@@ -47,7 +48,7 @@ function Playline.Defaults.TypewritterDialoguePresenter:RunLine(lineInfo)
     -- For example, you could implement a typewriter effect here
     print("Running line: " .. lineInfo.text)
     self.onStart()
-    self.textImage:clear(gfx.kColorClear)
+    self:writeToImage("", 0)
     local line = lineInfo.text
     local lineSecondsPerCharacter = convertCpsToSpc(self.CharactersPerSecond)
     local modifyLineSpeedFn = function(cps)

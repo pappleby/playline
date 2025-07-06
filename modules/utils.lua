@@ -100,7 +100,7 @@ function pu.SplitCommandText(commandText)
     while (reader:Read()) ~= nil do
         local c = readerOutput[1] -- Get the character read by the reader
         ---@diagnostic disable-next-line: param-type-mismatch
-        if StringHelper.IsWhitespace(c) then
+        if pu.StringHelper.IsWhitespace(c) then
             if #currentComponent > 0 then
                 -- We've reached the end of a run of visible characters.
                 -- Add this run to the result list and prepare for the next one.
