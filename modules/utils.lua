@@ -1,5 +1,9 @@
 import "CoreLibs/object"
-StringHelper = {
+Playline = Playline or {}
+Playline.Utils = {}
+local pu <const> = Playline.Utils
+
+pu.StringHelper = {
     IsDigit = function(c)
         return c~=nil and c == string.match(c, '%d')
     end,
@@ -45,13 +49,14 @@ StringHelper = {
         return endIndex
     end,
 }
-class('StringReader').extends()
-function StringReader:init(input, output)
+pu.StringReader = {}
+class('StringReader', nil, pu).extends()
+function pu.StringReader:init(input, output)
     self.input = input
     self.readIndex = 1
     self.output = output or {}
 end
-function StringReader:Peek()
+function pu.StringReader:Peek()
     local text = self.input
     local readIndex = self.readIndex
     -- Read a single character from the text, nil if we reach the end.
@@ -63,7 +68,7 @@ function StringReader:Peek()
     return char
 end
 
-function StringReader:Read()
+function pu.StringReader:Read()
     local c = self:Peek() -- This also updates the output
     if c == nil then
         return nil
@@ -72,11 +77,11 @@ function StringReader:Read()
     return c
 end
 
-function StringReader:SkipPastIndex(index)
+function pu.StringReader:SkipPastIndex(index)
     self.readIndex = index + 1
 end
 
-function SplitCommandText(commandText)
+function pu.SplitCommandText(commandText)
     local results = {
         name = nil,
         params = {}
@@ -90,7 +95,7 @@ function SplitCommandText(commandText)
     end
     local currentComponent = ''
     local readerOutput = {nil}
-    local reader = StringReader(commandText, readerOutput)
+    local reader = pu.StringReader(commandText, readerOutput)
 
     while (reader:Read()) ~= nil do
         local c = readerOutput[1] -- Get the character read by the reader
@@ -147,7 +152,7 @@ function SplitCommandText(commandText)
     return results
 end
 
-function ResumeThreadsAndYieldUntilAllDead(threads, paramsArray)
+function pu.ResumeThreadsAndYieldUntilAllDead(threads, paramsArray)
     local runningThreadCount = #threads
     while runningThreadCount > 0 do
         runningThreadCount = 0
@@ -165,4 +170,34 @@ function ResumeThreadsAndYieldUntilAllDead(threads, paramsArray)
             coroutine.yield() -- Yield to allow other coroutines to run
         end
     end
+end
+
+function pu.GetNodeHeaderValue(node, headerName)
+    if node and node.headers then
+        for _, header in ipairs(node.headers) do
+            if header.key == headerName then
+                return header.value
+            end
+        end
+    end
+    return nil
+end
+
+function pu.GetContentSaliencyConditionVariables(node)
+    local variablesString = pu.GetNodeHeaderValue(node, "$Yarn.Internal.ContentSaliencyVariables")
+    if not variablesString or variablesString == "" then
+        return {}
+    end
+    local variables = {}
+
+    for part in string.gmatch(variablesString, "([^;]+)") do
+        if part:len() ~= 0 then
+            table.insert(variables, part)
+        end
+    end
+    return variables
+end
+
+function pu.GetSaliencyViewCountKey(contentId)
+    return "$Yarn.Internal.Content.ViewCount." .. contentId
 end

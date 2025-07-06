@@ -2,7 +2,12 @@ import 'CoreLibs/object'
 import 'CoreLibs/string'
 import 'library.lua'
 import 'vm.lua'
+import 'smartVariableVM.lua'
+import 'variableAccess.lua'
+import 'saliency/RandomBestLeastRecentlyViewedSaliencyStrategy.lua'
+
 Playline = Playline or {}
+local pu <const> = Playline.Utils
 
 Playline.Dialogue = {}
 ---@class Dialogue
@@ -10,11 +15,10 @@ class('Dialogue', nil, Playline).extends()
 function Playline.Dialogue:init(variableStorage, yarnProgram, lineProvider)
     self.library = Playline.Library(true)
     self.program = yarnProgram
-    self.variableStorage = variableStorage
+    self.variableAccess = Playline.VariableAccess(variableStorage, yarnProgram, self.library)
     self.lineProvider = lineProvider
-    variableStorage.smartVariableEvaluator = self
-    self.vm = VM(self.library, yarnProgram, variableStorage)
-    self.smartVariableVM = {} -- Placeholder for smart variable VM
+    self.saliencyStrategy = Playline.Saliency.RandomBestLeastRecentlyViewedSaliencyStrategy(self.variableAccess)
+    self.vm = VM(self.library, yarnProgram, self.variableAccess, self.saliencyStrategy)
     self.library:registerFunction("visited", function(nodeName)
         self:IsNodeVisited(nodeName)
     end)
@@ -92,7 +96,7 @@ end
 
 function Playline.Dialogue:GetNodeVisitCount(nodeName)
     local variableName = GenerateUniqueVisitedVariableForNode(nodeName)
-    local count = self.variableStorage:getVariable(variableName) or 0
+    local count = self.variableAccess:Get(variableName) or 0
     return count
 end
 
@@ -157,7 +161,7 @@ function Playline.Dialogue:RegisterCommand(commandName, commandFunction)
 end
 
 function Playline.Dialogue:handleCommand(command, library)
-    local parsedCommand = SplitCommandText(command)
+    local parsedCommand = pu.SplitCommandText(command)
     local commandFunction = library.commands[parsedCommand.name]
     assert(commandFunction, "Command '" .. parsedCommand.name .. "' not found in library.")
 

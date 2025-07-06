@@ -1,6 +1,9 @@
 import "CoreLibs/object"
 import "utils.lua"
 
+Playline = Playline or {}
+local pu <const> = Playline.Utils
+
 ---@class LineParser
 class('LineParser').extends()
 
@@ -65,7 +68,7 @@ function LineParser:lexMarkup(input)
     local last = LexerToken(LexerTokenTypes.Start, 0, 0) -- should think about if this should be 0 or 1 if theses are all 1-based indices
     table.insert(tokens, last)
     local readerOutput = {nil}
-    local reader = StringReader(input, readerOutput)
+    local reader = pu.StringReader(input, readerOutput)
     local currentPosition = 1;
     while (reader:Read()) ~= nil do
         local c = readerOutput[1] -- Get the character read by the reader
@@ -102,13 +105,13 @@ function LineParser:lexMarkup(input)
                 -- if we are inside tag mode and ARENT one of the above specific tokens we MUST be an identifier
                 -- so this means we want to eat characters until we are no longer a valid identifier character
                 -- at which point we close off the identifier token and let lexing continue as normal
-                if(StringHelper.IsLetterOrDigit(c)) then
-                    local endPos = StringHelper.FindEndOfAlphanumeric(input, currentPosition)
+                if(pu.StringHelper.IsLetterOrDigit(c)) then
+                    local endPos = pu.StringHelper.FindEndOfAlphanumeric(input, currentPosition)
                     reader:SkipPastIndex(endPos)
                     last = LexerToken(LexerTokenTypes.Identifier, currentPosition, endPos)
                     table.insert(tokens, last)
                     currentPosition = endPos
-                elseif(not StringHelper.IsWhitespace(c)) then
+                elseif(not pu.StringHelper.IsWhitespace(c)) then
                     -- if we are whitespace we likely want to just continue because it's most likely just spacing between identifiers
                     -- the only time this isn't allowed is if they split the marker name, but that is a parser issue not a lexer issue
                     -- so basically if we encounter a non-alphanumeric or non-whitespace we error
@@ -119,11 +122,11 @@ function LineParser:lexMarkup(input)
             end
         elseif(mode == LexerMode.Value) then
             -- we are in value mode now
-            if (StringHelper.IsWhitespace(c)) then
+            if (pu.StringHelper.IsWhitespace(c)) then
                 -- whitespace is allowed in value mode, so we just continue
-            elseif(c == "-" or StringHelper.IsDigit(c)) then
+            elseif(c == "-" or pu.StringHelper.IsDigit(c)) then
                 --- we are a number
-                local endPos = StringHelper.FindEndOfNumber(input, currentPosition)
+                local endPos = pu.StringHelper.FindEndOfNumber(input, currentPosition)
                 local token = LexerToken(LexerTokenTypes.NumberValue, currentPosition, endPos)
                 if(endPos == nil) then
                     token.Type = LexerTokenTypes.Error
@@ -137,7 +140,7 @@ function LineParser:lexMarkup(input)
                 mode = LexerMode.Tag
             elseif(c == '"') then
                 -- we are a string value, so we need to find the end of the string
-                local endPos = StringHelper.FindEndOfQuotedString(input, currentPosition)
+                local endPos = pu.StringHelper.FindEndOfQuotedString(input, currentPosition)
                 local token = LexerToken(LexerTokenTypes.StringValue, currentPosition, endPos)
                 if(endPos == nil) then
                     token.Type = LexerTokenTypes.Error
@@ -150,7 +153,7 @@ function LineParser:lexMarkup(input)
                 last = token
                 mode = LexerMode.Tag
             elseif(c=="{") then
-                local endPos = StringHelper.FindEndOfInterpolatedValue(input, currentPosition)
+                local endPos = pu.StringHelper.FindEndOfInterpolatedValue(input, currentPosition)
                 local token = LexerToken(LexerTokenTypes.InterpolatedValue, currentPosition, endPos)
                 if(endPos == nil) then
                     token.Type = LexerTokenTypes.Error
@@ -164,9 +167,9 @@ function LineParser:lexMarkup(input)
                 mode = LexerMode.Tag
             else
                 -- we have either true/false or generic alphanumeric text
-                local endPos = StringHelper.FindEndOfAlphanumeric(input, currentPosition)
+                local endPos = pu.StringHelper.FindEndOfAlphanumeric(input, currentPosition)
                 local token = LexerToken(LexerTokenTypes.StringValue, currentPosition, endPos)
-                local isBool = StringHelper.IsBoolean(string.sub(currentPosition, endPos))
+                local isBool = pu.StringHelper.IsBoolean(string.sub(currentPosition, endPos))
                 if (isBool) then token.Type = LexerTokenTypes.BooleanValue end
                 table.insert(tokens, token)
                 reader:SkipPastIndex(endPos)

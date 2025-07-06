@@ -1,4 +1,8 @@
 import "CoreLibs/object"
+import "utils.lua"
+
+Playline = Playline or {}
+local pu <const> = Playline.Utils
 
 ---@class VmState
 class('VmState').extends()
@@ -44,12 +48,12 @@ end
 
 ---@class VM
 class('VM').extends()
-function VM:init(library, program, variableStorage)
+function VM:init(library, program, variableAccess, saliencyStrategy)
     self.state = VmState()
     self.executionState = 'Stopped'
-    self.contentSaliencyStrategy = nil -- Placeholder for default content saliency strategy
+    self.contentSaliencyStrategy = saliencyStrategy
     self.saliencyCandidateList = {}
-    self.variableStorage = variableStorage
+    self.variableAccess = variableAccess
     self.currentNode = nil
     self.nodeStartHandler = function () end
     self.prepareForLinesHandler =  function (lineIds) end
@@ -57,7 +61,7 @@ function VM:init(library, program, variableStorage)
     self.dialogueCompleteHandler = function () end
     self.nodeCompleteHandler = function (nodeName) end
     self.lineHandler = function (line, substitutions) end
-    self.commandHandler = function(commandText, library) end
+    self.commandHandler = function(commandText, _library) end
     self.library = library
     self.program = program
 end
@@ -191,8 +195,8 @@ function VM:ExecuteJumpToNode(nodeName, isDetour)
         -- call stack and issue a 'node complete' event for every node.
         self:ReturnFromNode(self.program.nodes[self.state.currentNodeName])
         while self.state:CanReturn() do
-            local poppedNodeName = state:PopCallStack().nodeName
-            if poppedNodeName ~= nil then 
+            local poppedNodeName = self.state:PopCallStack().nodeName
+            if poppedNodeName ~= nil then
                 self:ReturnFromNode(self.program.nodes[poppedNodeName])
             end
         end
@@ -209,24 +213,24 @@ function VM:ExecuteJumpToNode(nodeName, isDetour)
 end
 
 -- Shared between the normal vm and the smart variable vm
-function SharedVMCallFunction(self, functionName)
+function VM.SharedVMCallFunction(functionName, library, stack)
     -- Call a function, whose parameters are expected to
     -- be on the stack. Pushes the function's return value,
     -- if it returns one. 
-    local f = self.library:getFunction(functionName)
-    local actualParamCount = self.state:PopValue() -- The first value on the stack is the number of parameters
+    local f = library:getFunction(functionName)
+    local actualParamCount = table.remove(stack, #stack) -- The first value on the stack is the number of parameters
     local params = {}
     for i = actualParamCount, 1, -1 do
-        params[i] = self.state:PopValue()
+        params[i] = table.remove(stack, #stack)
     end
     local returnValue = f(table.unpack(params))
     if returnValue ~= nil then
-        self.state:PushValue(returnValue)
+        table.insert(stack, returnValue)
     end
 end
 
 function VM:CallFunction(functionName)
-    SharedVMCallFunction(self, functionName)
+    VM.SharedVMCallFunction(functionName, self.library, self.state.stack)
 end
 local vmRunInstructionCases = {
     jumpTo = function(self, instruction)
@@ -312,7 +316,7 @@ local vmRunInstructionCases = {
         self.state:PushValue(instruction.value)
     end,
     jumpIfFalse = function(self, instruction)
-        if self.state.PeekValue() == false then
+        if self.state:PeekValue() == false then
             self.state.programCounter = instruction.destination
         end
     end,
@@ -324,17 +328,14 @@ local vmRunInstructionCases = {
     end,
     pushVariable = function(self, instruction)
         local variableName = instruction.variableName
-        local loadedValue = self.variableStorage[variableName]
-        if loadedValue == nil then
-            loadedValue = self:GetVariableDefaultValue(variableName)
-        end
+        local loadedValue = self.variableAccess:Get(variableName)
         assert(loadedValue ~= nil, "Variable '" .. variableName .. "' has not been set and has no default value.")
         self.state:PushValue(loadedValue)
     end,
     storeVariable = function(self, instruction)
         local loadedValue = self.state:PopValue()
         local variableName = instruction.variableName
-        self.variableStorage[variableName] = loadedValue
+        self.variableAccess:Set(variableName, loadedValue)
     end,
     stop = function(self, instruction)
         self:ReturnFromNode(self.currentNode)
@@ -387,41 +388,42 @@ local vmRunInstructionCases = {
     end,
     addSaliencyCandidateFromNode = function(self, instruction)
         local nodeName = instruction.nodeName
-        local passed = 0
-        local failed = 0
+        local passingCount = 0
+        local failingCount = 0
         local node = self.program.nodes[nodeName]
         if node == nil then
             error("Node '" .. nodeName .. "' does not exist in the program.")
         end
-        for variableName in node.contentSaliencyConditionVariables do
-            local result = self.variableStorage.smartVariableEvaluator:evaluate(variableName)
-            if result then
-                passed += 1
-            else
-                failed += 1
+        local conditionVariables = pu.GetContentSaliencyConditionVariables(node)
+            for _, variableName in ipairs(conditionVariables) do
+                local variableValue = self.variableAccess:GetSmartVariableValue(variableName)
+                if variableValue == true then
+                    passingCount = passingCount + 1
+                elseif variableValue == false then
+                    failingCount = failingCount + 1
+                end
             end
-        end
-        local complexityScore = node.complexityScore or 0
+        local complexityScore = pu.GetNodeHeaderValue(node, "$Yarn.Internal.ContentSaliencyComplexity") or -1
         local candidate = {
             contentId = nodeName,
             complexityScore = complexityScore,
-            failingConditionValueCount = failed,
-            passingConditionValueCount = passed,
-            destination = node.destination + 1,
+            passingConditionValueCount = passingCount,
+            failingConditionValueCount = failingCount,
+            destination = instruction.destination + 1,
             contentType = "node"
         }
         table.insert(self.saliencyCandidateList, candidate)
     end,
     selectSaliencyCandidate = function(self, _)
-        local result = self.contentSaliencyStrategy:queryBestContent(self.saliencyCandidateList)
+        local result = self.contentSaliencyStrategy:QueryBestContent(self.saliencyCandidateList)
         if result ~= nil then
             -- TODO Validate that the result was in the candidate list
-            self.contentSaliencyStrategy:contentWasSelected(result)
-            self.state:pushValue(result.destination)
-            self.state:pushValue(true)
+            self.contentSaliencyStrategy:ContentWasSelected(result)
+            self.state:PushValue(result.destination)
+            self.state:PushValue(true)
         else
             -- Push a flag indicating that content was not selected.
-            self.state:pushValue(false)
+            self.state:PushValue(false)
         end 
         self.saliencyCandidateList = {} -- Clear the candidate list after selection
     end,

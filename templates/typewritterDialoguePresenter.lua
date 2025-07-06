@@ -8,28 +8,35 @@ local gfx <const> = playdate.graphics
 
 Playline = Playline or {}
 Playline.Defaults = Playline.Defaults or {}
+local pu <const> = Playline.Utils
 
 local function convertCpsToSpc(charactersPerSecond)
     return 1.0 / charactersPerSecond;
 end
 
+
+
 class('TypewritterDialoguePresenter', nil, Playline.Defaults).extends(Playline.DialoguePresenterBase)
-function Playline.Defaults.TypewritterDialoguePresenter:init(textImage, onStart, charactersPerSecond)
+function Playline.Defaults.TypewritterDialoguePresenter:init(textImage, onStart, charactersPerSecond, textBackground)
     Playline.Defaults.TypewritterDialoguePresenter.super.init(self)
     self.textImage = textImage
+    self.textBackground = textBackground
     self.onStart = onStart or function() end
     self.inProgressCoroutines = {}
     self.ActionMarkupHandlers = {}
     self.CharactersPerSecond = charactersPerSecond or 15
     local width, height = textImage:getSize()
-    self.textImageRect = playdate.geometry.rect.new(0, 0, width, height)
+    self.textImageRect = playdate.geometry.rect.new(10, 10, width-15, height-20)
+    self.textBackgroundRect = playdate.geometry.rect.new(0, 0, width, height)
+
 end
 
 function Playline.Defaults.TypewritterDialoguePresenter:writeToImage(lineText, charsToShow)
     local writableLine = lineText:sub(1, charsToShow)
     print("Typewritter: " .. writableLine)
-    self.textImage:clear(gfx.kColorWhite)
+    self.textImage:clear(gfx.kColorClear)
     gfx.pushContext(self.textImage)
+    self.textBackground:drawInRect(self.textBackgroundRect)
     gfx.setImageDrawMode(playdate.graphics.kDrawModeFillBlack)
     gfx.drawText(writableLine, self.textImageRect)
     gfx.popContext()
@@ -40,6 +47,7 @@ function Playline.Defaults.TypewritterDialoguePresenter:RunLine(lineInfo)
     -- For example, you could implement a typewriter effect here
     print("Running line: " .. lineInfo.text)
     self.onStart()
+    self.textImage:clear(gfx.kColorClear)
     local line = lineInfo.text
     local lineSecondsPerCharacter = convertCpsToSpc(self.CharactersPerSecond)
     local modifyLineSpeedFn = function(cps)
@@ -74,7 +82,7 @@ function Playline.Defaults.TypewritterDialoguePresenter:RunLine(lineInfo)
                     end
                 end
 
-                ResumeThreadsAndYieldUntilAllDead(self.inProgressCoroutines, {lineCancellationToken})
+                pu.ResumeThreadsAndYieldUntilAllDead(self.inProgressCoroutines, {lineCancellationToken})
 
                 self:writeToImage(line, i)
                 
