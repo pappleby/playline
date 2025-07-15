@@ -3,11 +3,14 @@ import "utils.lua"
 
 Playline = Playline or {}
 local pu <const> = Playline.Utils
+Playline.Internal = Playline.Internal or {}
+local pi = Playline.Internal
 
+pi.VmState = {}
 ---@class VmState
-class('VmState').extends()
+class('VmState', nil, pi).extends()
 
-function VmState:init()
+function pi.VmState:init()
     self.currentNodeName = nil
     self.programCounter = 1
     self.currentOptions = {}
@@ -15,68 +18,77 @@ function VmState:init()
     self.callStack = {}
 end
 
-function VmState:PushValue(value)
+function pi.VmState:PushValue(value)
     table.insert(self.stack, value)
 end
-function VmState:PopValue()
+
+function pi.VmState:PopValue()
     return table.remove(self.stack)
 end
-function VmState:PopArgs(count)
+
+function pi.VmState:PopArgs(count)
     local args = {}
     for i = count, 1, -1 do
         args[i] = self:PopValue()
     end
     return args
 end
-function VmState:PeekValue()
+
+function pi.VmState:PeekValue()
     return self.stack[#self.stack]
 end
-function VmState:ClearStack()
+
+function pi.VmState:ClearStack()
     self.stack = {}
 end
-function VmState:PushCallStack()
-    assert(self.currentNodeName,  "Cannot push call stack without a current node name")
-    local valueToPush = {nodeName = self.currentNodeName, programCounter = self.programCounter}
+
+function pi.VmState:PushCallStack()
+    assert(self.currentNodeName, "Cannot push call stack without a current node name")
+    local valueToPush = { nodeName = self.currentNodeName, programCounter = self.programCounter }
     table.insert(self.callStack, valueToPush)
 end
-function VmState:CanReturn()
+
+function pi.VmState:CanReturn()
     return #self.callStack > 0
 end
-function VmState:PopCallStack()
+
+function pi.VmState:PopCallStack()
     return table.remove(self.callStack)
 end
 
+pi.VM = {}
 ---@class VM
-class('VM').extends()
-function VM:init(library, program, variableAccess, saliencyStrategy)
-    self.state = VmState()
+class('VM', nil, pi).extends()
+function pi.VM:init(library, program, variableAccess, saliencyStrategy)
+    self.state = pi.VmState()
     self.executionState = 'Stopped'
     self.contentSaliencyStrategy = saliencyStrategy
     self.saliencyCandidateList = {}
     self.variableAccess = variableAccess
     self.currentNode = nil
-    self.nodeStartHandler = function () end
-    self.prepareForLinesHandler =  function (lineIds) end
-    self.optionsHandler = function (options) end
-    self.dialogueCompleteHandler = function () end
-    self.nodeCompleteHandler = function (nodeName) end
-    self.lineHandler = function (line, substitutions) end
+    self.nodeStartHandler = function() end
+    self.prepareForLinesHandler = function(lineIds) end
+    self.optionsHandler = function(options) end
+    self.dialogueCompleteHandler = function() end
+    self.nodeCompleteHandler = function(nodeName) end
+    self.lineHandler = function(line, substitutions) end
     self.commandHandler = function(commandText, _library) end
     self.library = library
     self.program = program
 end
 
-function VM:ResetState()
-    self.state = VmState()
+function pi.VM:ResetState()
+    self.state = pi.VmState()
 end
 
-function VM:SetExecutionState(newState)
+function pi.VM:SetExecutionState(newState)
     self.executionState = newState
-    if(newState == 'Stopped') then
+    if (newState == 'Stopped') then
         self:ResetState()
     end
 end
-function VM:GetVariableDefaultValue(variableName)
+
+function pi.VM:GetVariableDefaultValue(variableName)
     local variable = self.program.initialValues[variableName]
     if variable == nil or variable.value == nil or variable.value.oneofKind == nil then
         return nil
@@ -84,20 +96,22 @@ function VM:GetVariableDefaultValue(variableName)
     local variableKey = variable.value.oneofKind
     return variable.value[variableKey]
 end
-function VM:SetNode(nodeName, clearState)
-    if(clearState == nil) then
+
+function pi.VM:SetNode(nodeName, clearState)
+    if (clearState == nil) then
         clearState = true
     end
-    assert(self.program ~= nil or #self.program.nodes > 0, 'Cannot load node ' .. nodeName .. ' No nodes have been loaded.')
-    if(self.program.nodes[nodeName] == nil) then
+    assert(self.program ~= nil or #self.program.nodes > 0,
+        'Cannot load node ' .. nodeName .. ' No nodes have been loaded.')
+    if (self.program.nodes[nodeName] == nil) then
         self.executionState = 'Stopped'
         error('No node named ' .. nodeName .. ' has been loaded.')
     end
     print('Running node ' .. nodeName)
 
-        if(clearState) then
-            self:ResetState()
-        end
+    if (clearState) then
+        self:ResetState()
+    end
 
     self.currentNode = self.program.nodes[nodeName]
     self.state.currentNodeName = nodeName
@@ -113,15 +127,17 @@ function VM:SetNode(nodeName, clearState)
     return true
 end
 
-function VM:Stop()
+function pi.VM:Stop()
     self:SetExecutionState('Stopped')
     self.currentNode = nil
     if self.dialogueCompleteHandler then self.dialogueCompleteHandler() end
 end
 
-function VM:SetSelectedOption(option)
-    assert(self.executionState == 'WaitingOnOptionSelection', "SetSelectedOption was called, but Dialogue wasn't waiting for a selection. This method should only be called after the Dialogue is waiting for the user to select an option.")
-    assert(option ~= nil and option > 0 and option <= #self.state.currentOptions , option .. ' is not a valid option ID (expected a number between 1 and ' .. #self.state.currentOptions .. ')')
+function pi.VM:SetSelectedOption(option)
+    assert(self.executionState == 'WaitingOnOptionSelection',
+        "SetSelectedOption was called, but Dialogue wasn't waiting for a selection. This method should only be called after the Dialogue is waiting for the user to select an option.")
+    assert(option ~= nil and option > 0 and option <= #self.state.currentOptions,
+        option .. ' is not a valid option ID (expected a number between 1 and ' .. #self.state.currentOptions .. ')')
 
     -- We now know what number option was selected; push the
     -- corresponding node name to the stack
@@ -134,7 +150,7 @@ function VM:SetSelectedOption(option)
     self.executionState = 'WaitingForContinue'
 end
 
-function VM:Continue()
+function pi.VM:Continue()
     self:CheckCanContinue()
 
     if self.executionState == 'DeliveringContent' then
@@ -155,38 +171,39 @@ function VM:Continue()
         self:RunInstruction(currentInstruction)
         self.state.programCounter += 1
         if self.currentNode ~= nil and self.state.programCounter > #self.currentNode.instructions then
-          self:ReturnFromNode(self.currentNode)
-          self.SetExecutionState('Stopped')
-          if self.dialogueCompleteHandler then self.dialogueCompleteHandler() end
-          print('Run complete.')
+            self:ReturnFromNode(self.currentNode)
+            self:SetExecutionState('Stopped')
+            if self.dialogueCompleteHandler then self.dialogueCompleteHandler() end
+            print('Run complete.')
         end
     end
 end
 
-function VM:ReturnFromNode(node)
+function pi.VM:ReturnFromNode(node)
     if node == nil then return end -- Nothing to do
-    
+
     if self.nodeCompleteHandler then self.nodeCompleteHandler(node.name) end
     local nodeTrackingVariable = node.trackingVariableName
     if nodeTrackingVariable then
         local oldValue = self.variableStorage[nodeTrackingVariable]
-        
+
         if oldValue ~= nil then
             self.variableStorage[nodeTrackingVariable] = oldValue + 1
         else
-            print('Failed to get the tracking variable for node '+ node.name)
+            print('Failed to get the tracking variable for node ' + node.name)
         end
     end
 end
 
-function VM:CheckCanContinue()
-   assert(self.currentNode ~= nil, "Cannot continue running dialogue. No node has been selected.")
-   assert(self.executionState ~= 'WaitingOnOptionSelection', 'Cannot continue running dialogue. Still waiting on option selection.')
-   assert(self.optionsHandler ~= nil, 'Cannot continue running dialogue. VM.optionsHandler has not been set.')
-   assert(self.library ~= nil, 'Cannot continue running dialogue. VM.library has not been set.')
+function pi.VM:CheckCanContinue()
+    assert(self.currentNode ~= nil, "Cannot continue running dialogue. No node has been selected.")
+    assert(self.executionState ~= 'WaitingOnOptionSelection',
+        'Cannot continue running dialogue. Still waiting on option selection.')
+    assert(self.optionsHandler ~= nil, 'Cannot continue running dialogue. VM.optionsHandler has not been set.')
+    assert(self.library ~= nil, 'Cannot continue running dialogue. VM.library has not been set.')
 end
 
-function VM:ExecuteJumpToNode(nodeName, isDetour)
+function pi.VM:ExecuteJumpToNode(nodeName, isDetour)
     if isDetour then
         -- Preserve our current state.
         self.state:PushCallStack()
@@ -213,10 +230,10 @@ function VM:ExecuteJumpToNode(nodeName, isDetour)
 end
 
 -- Shared between the normal vm and the smart variable vm
-function VM.SharedVMCallFunction(functionName, library, stack)
+function pi.VM.SharedVMCallFunction(functionName, library, stack)
     -- Call a function, whose parameters are expected to
     -- be on the stack. Pushes the function's return value,
-    -- if it returns one. 
+    -- if it returns one.
     local f = library:getFunction(functionName)
     local actualParamCount = table.remove(stack, #stack) -- The first value on the stack is the number of parameters
     local params = {}
@@ -229,9 +246,10 @@ function VM.SharedVMCallFunction(functionName, library, stack)
     end
 end
 
-function VM:CallFunction(functionName)
-    VM.SharedVMCallFunction(functionName, self.library, self.state.stack)
+function pi.VM:CallFunction(functionName)
+    pi.VM.SharedVMCallFunction(functionName, self.library, self.state.stack)
 end
+
 local vmRunInstructionCases = {
     jumpTo = function(self, instruction)
         self.state.programCounter = instruction.destination
@@ -267,7 +285,6 @@ local vmRunInstructionCases = {
             -- The client didn't call Continue, so we'll wait here.
             self.executionState = 'WaitingForContinue'
         end
-        
     end,
     addOption = function(self, instruction)
         local lineId = instruction.lineID
@@ -395,14 +412,14 @@ local vmRunInstructionCases = {
             error("Node '" .. nodeName .. "' does not exist in the program.")
         end
         local conditionVariables = pu.GetContentSaliencyConditionVariables(node)
-            for _, variableName in ipairs(conditionVariables) do
-                local variableValue = self.variableAccess:GetSmartVariableValue(variableName)
-                if variableValue == true then
-                    passingCount = passingCount + 1
-                elseif variableValue == false then
-                    failingCount = failingCount + 1
-                end
+        for _, variableName in ipairs(conditionVariables) do
+            local variableValue = self.variableAccess:GetSmartVariableValue(variableName)
+            if variableValue == true then
+                passingCount = passingCount + 1
+            elseif variableValue == false then
+                failingCount = failingCount + 1
             end
+        end
         local complexityScore = pu.GetNodeHeaderValue(node, "$Yarn.Internal.ContentSaliencyComplexity") or -1
         local candidate = {
             contentId = nodeName,
@@ -424,11 +441,11 @@ local vmRunInstructionCases = {
         else
             -- Push a flag indicating that content was not selected.
             self.state:PushValue(false)
-        end 
+        end
         self.saliencyCandidateList = {} -- Clear the candidate list after selection
     end,
 }
-function VM:RunInstruction(instruction)
+function pi.VM:RunInstruction(instruction)
     local opcode = instruction.instructionType.oneofKind
     local handler = vmRunInstructionCases[opcode]
     assert(handler, "No handler for instruction opcode: " .. instruction.instructionType.oneofKind)

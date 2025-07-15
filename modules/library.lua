@@ -2,7 +2,7 @@ import "CoreLibs/object"
 
 Playline = Playline or {}
 
-local standardLibrary = 
+local standardLibrary =
 {
     functions = {
         string = tostring,
@@ -52,16 +52,16 @@ local standardLibrary =
         ['String.NotEqualTo'] = function(a, b)
             return a ~= b
         end,
-        ['Bool.Or'] = function(a,b)
+        ['Bool.Or'] = function(a, b)
             return a or b
         end,
-        ['Bool.Xor'] = function(a,b)
+        ['Bool.Xor'] = function(a, b)
             return (a or b) and not (a and b)
         end,
         ['Bool.Not'] = function(a)
             return not a
         end,
-        ['Bool.And'] = function(a,b)
+        ['Bool.And'] = function(a, b)
             return a and b
         end,
         ['Bool.EqualTo'] = function(a, b)
@@ -83,7 +83,7 @@ local standardLibrary =
         random_range_float = function(minInclusive, maxInclusive)
             return math.random(math.modf(maxInclusive) - math.modf(minInclusive)) + minInclusive
         end,
-        dice = function (sides)
+        dice = function(sides)
             return math.random(1, sides)
         end,
         min = math.min,
@@ -112,16 +112,16 @@ local standardLibrary =
             end
         end,
         decimal = function(n)
-            return select(2,math.modf(n))
+            return select(2, math.modf(n))
         end,
         int = function(n)
-            if(n>=0) then
+            if (n >= 0) then
                 return math.floor(n)
-            else 
+            else
                 return math.ceil(n)
             end
         end,
-},
+    },
     commands = {
         wait = function(secondsString)
             local seconds = tonumber(secondsString)
@@ -140,7 +140,7 @@ local standardLibrary =
 
 Playline.Library = {}
 ---@class Library
-class('Library', {functions={}, commands={}}, Playline).extends()
+class('Library', { functions = {}, commands = {} }, Playline).extends()
 function Playline.Library:init(useStandardLibrary)
     if useStandardLibrary then
         self:importLibrary(standardLibrary)
@@ -183,9 +183,11 @@ end
 function Playline.Library:registerCommand(name, command)
     self.commands[name] = command
 end
+
 function Playline.Library:commandExists(name)
     return self.commands[name] ~= nil
 end
+
 function Playline.Library:deregisterCommand(name)
     self.commands[name] = nil
 end
@@ -194,4 +196,3 @@ end
 function GenerateUniqueVisitedVariableForNode(nodeName)
     return '$Yarn.Internal.Visiting.' .. nodeName
 end
-

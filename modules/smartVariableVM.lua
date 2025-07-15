@@ -3,8 +3,9 @@ import "utils.lua"
 
 Playline = Playline or {}
 local pu <const> = Playline.Utils
+local pi <const> = Playline.Internal
 
-local pushInstructionValueToStack =  function(instruction, _, _, stack, _)
+local pushInstructionValueToStack = function(instruction, _, _, stack, _)
     table.insert(stack, instruction.value)
 end
 local instructionCases = {
@@ -12,10 +13,10 @@ local instructionCases = {
     pushFloat = pushInstructionValueToStack,
     pushBool = pushInstructionValueToStack,
     pop = function(_, _, _, stack, _)
-            table.remove(stack)
+        table.remove(stack)
     end,
     callFunc = function(instruction, _, library, stack, _)
-        VM.SharedVMCallFunction(instruction.functionName, library, stack)
+        pi.VM.SharedVMCallFunction(instruction.functionName, library, stack)
     end,
     pushVariable = function(instruction, variableAccess, _, stack, _)
         local variableName = instruction.variableName
@@ -52,10 +53,10 @@ local getSmartVariable = function(name, variableAccess, program, library)
     assert(variableAccess ~= nil, "Variable access cannot be nil.")
     assert(library ~= nil, "Library cannot be nil.")
     assert(program ~= nil, "Program cannot be nil.")
-    
+
     local stack = {}
-    local programCounter = {1}
-    
+    local programCounter = { 1 }
+
     local smartVariableNode = program.nodes[name]
     assert(smartVariableNode, "Smart variable node '" .. name .. "' not found in program.")
 
@@ -66,7 +67,9 @@ local getSmartVariable = function(name, variableAccess, program, library)
         end
     end
 
-    assert(#stack == 1 , "Error when evaluating smart variable ".. name .. " - stack did not end with a single remaining value after evaluation")
+    assert(#stack == 1,
+        "Error when evaluating smart variable " ..
+        name .. " - stack did not end with a single remaining value after evaluation")
 
     local result = stack[1]
     return result
@@ -76,14 +79,14 @@ local getSaliencyOptionsForNodeGroup = function(nodeGroupName, variableAccess, p
     local nodeGroup = program.nodes[nodeGroupName]
     assert(nodeGroup, "Node group '" .. nodeGroupName .. "' not found in program.")
     if pu.GetNodeHeaderValue(nodeGroup, "$Yarn.Internal.NodeGroupHub") == nil then
-        -- This is not a node group, it's a plain node. 
+        -- This is not a node group, it's a plain node.
         -- Return a single content saliency "option" that represents this node.
-        return {{
+        return { {
             complexityScore = 0,
             contentType = "node",
             passingConditionValueCount = 1,
             failingConditionValueCount = 0,
-        }}
+        } }
     end
     local options = {}
     for nodeName, node in pairs(program.nodes) do
@@ -114,4 +117,3 @@ Playline.SmartVariableVM = {
     GetSmartVariable = getSmartVariable,
     GetSaliencyOptionsForNodeGroup = getSaliencyOptionsForNodeGroup,
 }
-

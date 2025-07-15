@@ -1,20 +1,20 @@
 import "CoreLibs/object"
 Playline = Playline or {}
-Playline.Utils = {}
+Playline.Utils = Playline.Utils or {}
 local pu <const> = Playline.Utils
 
 pu.StringHelper = {
     IsDigit = function(c)
-        return c~=nil and c == string.match(c, '%d')
+        return c ~= nil and c == string.match(c, '%d')
     end,
     IsLetterOrDigit = function(c)
-        return c~=nil and c == string.match(c, '%w')
+        return c ~= nil and c == string.match(c, '%w')
     end,
     IsWhitespace = function(c)
-        return c~=nil and c == string.match(c, '%s')
+        return c ~= nil and c == string.match(c, '%s')
     end,
     IsBoolean = function(c)
-        return c~=nil and (c == 'true' or c == 'false')
+        return c ~= nil and (c == 'true' or c == 'false')
     end,
     FindEndOfAlphanumeric = function(input, startIndex)
         local _, endIndex = input:find('^%w+', startIndex)
@@ -25,7 +25,7 @@ pu.StringHelper = {
         return endIndex
     end,
     FindEndOfQuotedString = function(input, startIndex)
-       startIndex = startIndex
+        startIndex = startIndex
         while true do
             local quotePos = input:find('"', startIndex + 1) -- skip the opening quote
             if not quotePos then return nil end
@@ -56,11 +56,12 @@ function pu.StringReader:init(input, output)
     self.readIndex = 1
     self.output = output or {}
 end
+
 function pu.StringReader:Peek()
     local text = self.input
     local readIndex = self.readIndex
     -- Read a single character from the text, nil if we reach the end.
-    if(readIndex > #text) then
+    if (readIndex > #text) then
         return nil
     end
     local char = text:sub(readIndex, readIndex)
@@ -94,7 +95,7 @@ function pu.SplitCommandText(commandText)
         end
     end
     local currentComponent = ''
-    local readerOutput = {nil}
+    local readerOutput = { nil }
     local reader = pu.StringReader(commandText, readerOutput)
 
     while (reader:Read()) ~= nil do
@@ -146,9 +147,9 @@ function pu.SplitCommandText(commandText)
         end
         ::continue::
     end
-     if #currentComponent > 0 then
+    if #currentComponent > 0 then
         addNameOrParam(currentComponent)
-     end
+    end
     return results
 end
 

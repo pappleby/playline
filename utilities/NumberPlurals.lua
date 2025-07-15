@@ -1,3 +1,6 @@
+Playline.Utils = Playline.Utils or {}
+local pu <const> = Playline.Utils
+
 local PluralCase = {
     Zero = "zero",
     One = "one",
@@ -15,7 +18,7 @@ local function getCardinalPluralCase_en(numericValue)
     return PluralCase.One
 end
 
-function GetCardinalPluralCase(languageCode, numericValue)
+function pu.GetCardinalPluralCase(languageCode, numericValue)
     -- Currently only supports English
     return getCardinalPluralCase_en(numericValue)
 end
@@ -34,7 +37,7 @@ local function getOrdinalPluralCase_en(numericValue)
     end
 end
 
-function GetOrdinalPluralCase(languageCode, numericValue)
+function pu.GetOrdinalPluralCase(languageCode, numericValue)
     -- Currently only supports English
     return getOrdinalPluralCase_en(numericValue)
 end

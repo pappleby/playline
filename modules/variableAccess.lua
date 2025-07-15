@@ -18,7 +18,6 @@ function Playline.VariableAccess:init(variableStorage, program, library)
             end
         end
     end
-    
 end
 
 function Playline.VariableAccess:GetDefaultValue(name)
@@ -41,7 +40,7 @@ function Playline.VariableAccess:Get(name)
     local value = self.variableStorage[name]
 
     if value == nil then
-            value = self:GetSmartVariableValue(name)
+        value = self:GetSmartVariableValue(name)
     end
 
     if value == nil then
@@ -53,4 +52,3 @@ end
 function Playline.VariableAccess:Set(name, value)
     self.variableStorage[name] = value
 end
-

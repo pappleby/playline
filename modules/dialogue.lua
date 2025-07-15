@@ -8,6 +8,7 @@ import 'saliency/RandomBestLeastRecentlyViewedSaliencyStrategy.lua'
 
 Playline = Playline or {}
 local pu <const> = Playline.Utils
+local pi <const> = Playline.Internal
 
 Playline.Dialogue = {}
 ---@class Dialogue
@@ -18,7 +19,7 @@ function Playline.Dialogue:init(variableStorage, yarnProgram, lineProvider)
     self.variableAccess = Playline.VariableAccess(variableStorage, yarnProgram, self.library)
     self.lineProvider = lineProvider
     self.saliencyStrategy = Playline.Saliency.RandomBestLeastRecentlyViewedSaliencyStrategy(self.variableAccess)
-    self.vm = VM(self.library, yarnProgram, self.variableAccess, self.saliencyStrategy)
+    self.vm = pi.VM(self.library, yarnProgram, self.variableAccess, self.saliencyStrategy)
     self.library:registerFunction("visited", function(nodeName)
         self:IsNodeVisited(nodeName)
     end)

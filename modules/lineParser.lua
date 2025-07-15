@@ -3,13 +3,18 @@ import "utils.lua"
 
 Playline = Playline or {}
 local pu <const> = Playline.Utils
+Playline.Internal = Playline.Internal or {}
 
+local pi <const> = Playline.Internal
+local lpi <const> = {}
+
+pi.LineParser = {}
 ---@class LineParser
-class('LineParser').extends()
+class('LineParser', nil, pi).extends()
 
-function LineParser:init()
-   self.markerProcessors = {}
-   self.internalIncrementingAttribute = 1
+function pi.LineParser:init()
+    self.markerProcessors = {}
+    self.internalIncrementingAttribute = 1
 end
 
 ---@enum LexerTokenType
@@ -37,20 +42,23 @@ local LexerMode = {
     Value = "Value",
 }
 
+lpi.LexerToken = {}
 ---@class LexerToken
-class('LexerToken').extends()
-function LexerToken:init(lexerType, startPos, endPos)
+class('LexerToken', nil, lpi).extends()
+function lpi.LexerToken:init(lexerType, startPos, endPos)
     self.Type = lexerType or LexerTokenTypes.Text
     self.Start = startPos or 0
     self.End = endPos or 0
 end
 
-function LexerToken:Range()
+function lpi.LexerToken:Range()
     return self.End + 1 - self.Start
 end
 
-class('MarkupAttribute').extends()
-function MarkupAttribute:init(position, sourcePosition, length, name, properties)
+lpi.MarkupAttribute = {}
+---@class MarkupAttribute
+class('MarkupAttribute', nil, lpi).extends()
+function lpi.MarkupAttribute:init(position, sourcePosition, length, name, properties)
     self.Position = position
     self.SourcePosition = sourcePosition
     self.Length = length
@@ -58,77 +66,76 @@ function MarkupAttribute:init(position, sourcePosition, length, name, properties
     self.Properties = table.deepcopy(properties) -- TODO consider shallow copy here
 end
 
-
-function LineParser:lexMarkup(input)
-    if(input == "") then
-        return {LexerToken(LexerTokenTypes.Start, 0, 0), LexerToken(LexerTokenTypes.End, 0, 0)}
+function pi.LineParser:lexMarkup(input)
+    if (input == "") then
+        return { lpi.LexerToken(LexerTokenTypes.Start, 0, 0), lpi.LexerToken(LexerTokenTypes.End, 0, 0) }
     end
     local tokens = {}
     local mode = LexerMode.Text
-    local last = LexerToken(LexerTokenTypes.Start, 0, 0) -- should think about if this should be 0 or 1 if theses are all 1-based indices
+    local last = lpi.LexerToken(LexerTokenTypes.Start, 0, 0) -- should think about if this should be 0 or 1 if theses are all 1-based indices
     table.insert(tokens, last)
-    local readerOutput = {nil}
+    local readerOutput = { nil }
     local reader = pu.StringReader(input, readerOutput)
     local currentPosition = 1;
     while (reader:Read()) ~= nil do
         local c = readerOutput[1] -- Get the character read by the reader
-        if(mode == LexerMode.Text) then
+        if (mode == LexerMode.Text) then
             local isPreviousCharBackslash = (last.Type == LexerTokenTypes.Text and input[last.End] == "\\")
-            if(c == "[" and not isPreviousCharBackslash) then
-                last = LexerToken(LexerTokenTypes.OpenMarker, currentPosition, currentPosition)
+            if (c == "[" and not isPreviousCharBackslash) then
+                last = lpi.LexerToken(LexerTokenTypes.OpenMarker, currentPosition, currentPosition)
                 table.insert(tokens, last)
                 mode = LexerMode.Tag
             else
-                if(last.Type == LexerTokenTypes.Text) then
+                if (last.Type == LexerTokenTypes.Text) then
                     -- if the last token is also a text we want to extend it
                     last.End = currentPosition
                 else
                     -- otherwise we make a new text token
-                    last = LexerToken(LexerTokenTypes.Text, currentPosition, currentPosition)
+                    last = lpi.LexerToken(LexerTokenTypes.Text, currentPosition, currentPosition)
                     table.insert(tokens, last)
                 end
             end
-        elseif(mode == LexerMode.Tag) then
+        elseif (mode == LexerMode.Tag) then
             -- we are in tag mode, this means different rules for text basically
-            if(c == "]") then
-                last = LexerToken(LexerTokenTypes.CloseMarker, currentPosition, currentPosition)
+            if (c == "]") then
+                last = lpi.LexerToken(LexerTokenTypes.CloseMarker, currentPosition, currentPosition)
                 table.insert(tokens, last)
                 mode = LexerMode.Text
-            elseif(c == "/") then
-                last = LexerToken(LexerTokenTypes.CloseSlash, currentPosition, currentPosition)
+            elseif (c == "/") then
+                last = lpi.LexerToken(LexerTokenTypes.CloseSlash, currentPosition, currentPosition)
                 table.insert(tokens, last)
-            elseif(c == "=") then
-                last = LexerToken(LexerTokenTypes.Equals, currentPosition, currentPosition)
+            elseif (c == "=") then
+                last = lpi.LexerToken(LexerTokenTypes.Equals, currentPosition, currentPosition)
                 table.insert(tokens, last)
                 mode = LexerMode.Value
             else
                 -- if we are inside tag mode and ARENT one of the above specific tokens we MUST be an identifier
                 -- so this means we want to eat characters until we are no longer a valid identifier character
                 -- at which point we close off the identifier token and let lexing continue as normal
-                if(pu.StringHelper.IsLetterOrDigit(c)) then
+                if (pu.StringHelper.IsLetterOrDigit(c)) then
                     local endPos = pu.StringHelper.FindEndOfAlphanumeric(input, currentPosition)
                     reader:SkipPastIndex(endPos)
-                    last = LexerToken(LexerTokenTypes.Identifier, currentPosition, endPos)
+                    last = lpi.LexerToken(LexerTokenTypes.Identifier, currentPosition, endPos)
                     table.insert(tokens, last)
                     currentPosition = endPos
-                elseif(not pu.StringHelper.IsWhitespace(c)) then
+                elseif (not pu.StringHelper.IsWhitespace(c)) then
                     -- if we are whitespace we likely want to just continue because it's most likely just spacing between identifiers
                     -- the only time this isn't allowed is if they split the marker name, but that is a parser issue not a lexer issue
                     -- so basically if we encounter a non-alphanumeric or non-whitespace we error
-                    last = LexerToken(LexerTokenTypes.Error, currentPosition, currentPosition)
+                    last = lpi.LexerToken(LexerTokenTypes.Error, currentPosition, currentPosition)
                     table.insert(tokens, last)
                     mode = LexerMode.Text
                 end
             end
-        elseif(mode == LexerMode.Value) then
+        elseif (mode == LexerMode.Value) then
             -- we are in value mode now
             if (pu.StringHelper.IsWhitespace(c)) then
                 -- whitespace is allowed in value mode, so we just continue
-            elseif(c == "-" or pu.StringHelper.IsDigit(c)) then
+            elseif (c == "-" or pu.StringHelper.IsDigit(c)) then
                 --- we are a number
                 local endPos = pu.StringHelper.FindEndOfNumber(input, currentPosition)
-                local token = LexerToken(LexerTokenTypes.NumberValue, currentPosition, endPos)
-                if(endPos == nil) then
+                local token = lpi.LexerToken(LexerTokenTypes.NumberValue, currentPosition, endPos)
+                if (endPos == nil) then
                     token.Type = LexerTokenTypes.Error
                     token.End = currentPosition
                     endPos = currentPosition
@@ -138,11 +145,11 @@ function LineParser:lexMarkup(input)
                 table.insert(tokens, token)
                 last = token
                 mode = LexerMode.Tag
-            elseif(c == '"') then
+            elseif (c == '"') then
                 -- we are a string value, so we need to find the end of the string
                 local endPos = pu.StringHelper.FindEndOfQuotedString(input, currentPosition)
-                local token = LexerToken(LexerTokenTypes.StringValue, currentPosition, endPos)
-                if(endPos == nil) then
+                local token = lpi.LexerToken(LexerTokenTypes.StringValue, currentPosition, endPos)
+                if (endPos == nil) then
                     token.Type = LexerTokenTypes.Error
                     token.End = currentPosition
                     endPos = currentPosition
@@ -152,10 +159,10 @@ function LineParser:lexMarkup(input)
                 table.insert(tokens, token)
                 last = token
                 mode = LexerMode.Tag
-            elseif(c=="{") then
+            elseif (c == "{") then
                 local endPos = pu.StringHelper.FindEndOfInterpolatedValue(input, currentPosition)
-                local token = LexerToken(LexerTokenTypes.InterpolatedValue, currentPosition, endPos)
-                if(endPos == nil) then
+                local token = lpi.LexerToken(LexerTokenTypes.InterpolatedValue, currentPosition, endPos)
+                if (endPos == nil) then
                     token.Type = LexerTokenTypes.Error
                     token.End = currentPosition
                     endPos = currentPosition
@@ -168,7 +175,7 @@ function LineParser:lexMarkup(input)
             else
                 -- we have either true/false or generic alphanumeric text
                 local endPos = pu.StringHelper.FindEndOfAlphanumeric(input, currentPosition)
-                local token = LexerToken(LexerTokenTypes.StringValue, currentPosition, endPos)
+                local token = lpi.LexerToken(LexerTokenTypes.StringValue, currentPosition, endPos)
                 local isBool = pu.StringHelper.IsBoolean(string.sub(currentPosition, endPos))
                 if (isBool) then token.Type = LexerTokenTypes.BooleanValue end
                 table.insert(tokens, token)
@@ -177,16 +184,15 @@ function LineParser:lexMarkup(input)
                 mode = LexerMode.Tag
                 last = token
             end
-
         else
             -- we are in an invalid mode somehow, lex as errors
-            last = LexerToken(LexerTokenTypes.Error, currentPosition, currentPosition)
+            last = lpi.LexerToken(LexerTokenTypes.Error, currentPosition, currentPosition)
             table.insert(tokens, last)
         end
 
         currentPosition = currentPosition + 1
     end
-    last = LexerToken(LexerTokenTypes.End, currentPosition, #input)
+    last = lpi.LexerToken(LexerTokenTypes.End, currentPosition, #input)
     table.insert(tokens, last)
     return tokens
 end
@@ -197,7 +203,7 @@ end
 -- [z] this [a] is [b] some [c] markup [d] with [e] both [/c][/e][/d][/a][/z] misclosed tags and double unclosable tags[/b]
 -- it is a variant of the adoption agency algorithm
 -- if true returned, caller should clear unmatchedCloseNames
-function LineParser:cleanUpUnmatchedCloses(openNodes, unmatchedCloseNames, errors)
+function pi.LineParser:cleanUpUnmatchedCloses(openNodes, unmatchedCloseNames, errors)
     local orphans = {}
     -- while we still have unbalanced closes AND haven't hit the root of the tree
     while #unmatchedCloseNames > 0 and #openNodes > 1 do
@@ -229,9 +235,11 @@ function LineParser:cleanUpUnmatchedCloses(openNodes, unmatchedCloseNames, error
         -- now at this point we should have no unmatched closes left
         -- if we did it meant we popped all the way to the end of the stack and are at the root and STILL didn't find that close
         -- at this point it's an error as they typoed the close marker
-        if(#unmatchedCloseNames > 0) then
+        if (#unmatchedCloseNames > 0) then
             for _, unmatched in ipairs(unmatchedCloseNames) do
-                table.insert(errors, {message = "asked to close ".. unmatched.. " markup but there is no corresponding opening. Is [/".. unmatched.."] a typo?", column = 0})
+                table.insert(errors,
+                    { message = "asked to close " ..
+                    unmatched .. " markup but there is no corresponding opening. Is [/" .. unmatched .. "] a typo?", column = 0 })
                 return true
             end
         end
@@ -239,7 +247,8 @@ function LineParser:cleanUpUnmatchedCloses(openNodes, unmatchedCloseNames, error
         -- now on the top of the stack we have the current common ancestor of all the orphans
         -- we want to reparent them back onto the stack now as cousin clones of their original selves
         for _, template in ipairs(orphans) do
-            local clone = {name = template.name, firstToken = template.firstToken, children = {}, properties = template.properties}
+            local clone = { name = template.name, firstToken = template.firstToken, children = {}, properties = template
+            .properties }
             table.insert(openNodes[#openNodes].children, clone)
             table.insert(openNodes, clone)
         end
@@ -271,7 +280,7 @@ local ValueFromToken = function(input, token)
     local valueString = string.sub(input, token.Start, token.End)
     local firstChar = valueString:sub(1, 1)
     local lastChar = valueString:sub(#valueString, #valueString)
-    if(#valueString >= 2 and firstChar == "\"" and lastChar  == "\"") then
+    if (#valueString >= 2 and firstChar == "\"" and lastChar == "\"") then
         -- if we are inside delimiters we will also need to remove any escaped characters
         -- and trim the enclosing quotes
         valueString = string.gsub(string.sub(valueString, 2, #valueString - 1), "\\\\", "")
@@ -288,11 +297,11 @@ end
 
 
 local comparePattern = function(tokens, startIndex, pattern)
-    if(#tokens <= #pattern + startIndex - 1) then
+    if (#tokens <= #pattern + startIndex - 1) then
         return false
     end
     for i = 1, #pattern do
-        if(tokens[startIndex + i - 1].Type ~= pattern[i]) then
+        if (tokens[startIndex + i - 1].Type ~= pattern[i]) then
             return false
         end
     end
@@ -302,34 +311,37 @@ end
 -- [ / ]
 local closeAllPattern = { LexerTokenTypes.OpenMarker, LexerTokenTypes.CloseSlash, LexerTokenTypes.CloseMarker }
 -- [ / ID ]
-local closeOpenAttributePattern = { LexerTokenTypes.OpenMarker, LexerTokenTypes.CloseSlash, LexerTokenTypes.Identifier, LexerTokenTypes.CloseMarker }
--- [ / ~( ID | ] ) 
+local closeOpenAttributePattern = { LexerTokenTypes.OpenMarker, LexerTokenTypes.CloseSlash, LexerTokenTypes.Identifier,
+    LexerTokenTypes.CloseMarker }
+-- [ / ~( ID | ] )
 local closeErrorPattern = { LexerTokenTypes.OpenMarker, LexerTokenTypes.CloseSlash }
 -- [ ID ]
-local openAttributePropertyLessPattern = { LexerTokenTypes.OpenMarker, LexerTokenTypes.Identifier, LexerTokenTypes.CloseMarker }
+local openAttributePropertyLessPattern = { LexerTokenTypes.OpenMarker, LexerTokenTypes.Identifier, LexerTokenTypes
+    .CloseMarker }
 -- ID = VALUE
 local numberPropertyPattern = { LexerTokenTypes.Identifier, LexerTokenTypes.Equals, LexerTokenTypes.NumberValue }
 local booleanPropertyPattern = { LexerTokenTypes.Identifier, LexerTokenTypes.Equals, LexerTokenTypes.BooleanValue }
 local stringPropertyPattern = { LexerTokenTypes.Identifier, LexerTokenTypes.Equals, LexerTokenTypes.StringValue }
-local interpolatedPropertyPattern = { LexerTokenTypes.Identifier, LexerTokenTypes.Equals, LexerTokenTypes.InterpolatedValue }
+local interpolatedPropertyPattern = { LexerTokenTypes.Identifier, LexerTokenTypes.Equals, LexerTokenTypes
+    .InterpolatedValue }
 -- / ]
 local selfClosingAttributeEndPattern = { LexerTokenTypes.CloseSlash, LexerTokenTypes.CloseMarker }
 
-function LineParser:buildMarkupTreeFromTokens(tokens, input)
-    local tree = {name= nil, firstToken= nil, children = {}, properties = {}}
-    
+function pi.LineParser:buildMarkupTreeFromTokens(tokens, input)
+    local tree = { name = nil, firstToken = nil, children = {}, properties = {} }
+
 
     local diagnostic = {}
     if tokens == nil or #tokens < 2 then
-        table.insert(diagnostic, {message = "No tokens found in input.", column = 0}) -- do we ever need to return column?
+        table.insert(diagnostic, { message = "No tokens found in input.", column = 0 }) -- do we ever need to return column?
         return tree, diagnostic
     end
     if #input == 0 then
-        table.insert(diagnostic, {message = "There is a valid list of tokens but no original string.", column = 0})
+        table.insert(diagnostic, { message = "There is a valid list of tokens but no original string.", column = 0 })
         return tree, diagnostic
     end
     if tokens[1].Type ~= LexerTokenTypes.Start or tokens[#tokens].Type ~= LexerTokenTypes.End then
-        table.insert(diagnostic, {message = "Token list doesn't start and end with the correct tokens.", column = 0})
+        table.insert(diagnostic, { message = "Token list doesn't start and end with the correct tokens.", column = 0 })
         return tree, diagnostic
     end
     local openNodes = {}
@@ -356,7 +368,6 @@ function LineParser:buildMarkupTreeFromTokens(tokens, input)
                 if clearneeded then
                     unmatchedCloses = {}
                 end
-                
             end
             local text = string.sub(input, currentToken.Start, currentToken.End)
             local node = {
@@ -387,7 +398,9 @@ function LineParser:buildMarkupTreeFromTokens(tokens, input)
                     end
                 end
                 for _, unmatched in ipairs(unmatchedCloses) do
-                    table.insert(diagnostic, {message = "Asked to close ".. unmatched .." markup but there is no corresponding opening. Is [/".. unmatched .."] a typo?", column = 0})
+                    table.insert(diagnostic,
+                        { message = "Asked to close " ..
+                        unmatched .. " markup but there is no corresponding opening. Is [/" .. unmatched .. "] a typo?", column = 0 })
                 end
                 unmatchedCloses = {}
                 goto finishTokenLoop
@@ -402,12 +415,14 @@ function LineParser:buildMarkupTreeFromTokens(tokens, input)
                 -- first up we need to get the current top of the stack
                 if #openNodes == 1 then
                     -- this is an error, we can't close something when we only have the root node
-                    table.insert(diagnostic, {message = "Asked to close " .. closeID .. ", but we don't have an open marker for it.", column = currentToken.Start})
+                    table.insert(diagnostic,
+                        { message = "Asked to close " .. closeID .. ", but we don't have an open marker for it.", column =
+                        currentToken.Start })
                 else
                     -- if they have the same name we are in luck
                     -- we can pop this bad boy off the stack right now and continue
                     -- if not then we add this to the list of unmatched closes for later clean up and continue
-                    if(closeID == openNodes[#openNodes].name) then
+                    if (closeID == openNodes[#openNodes].name) then
                         table.remove(openNodes)
                     else
                         table.insert(unmatchedCloses, closeID)
@@ -415,8 +430,9 @@ function LineParser:buildMarkupTreeFromTokens(tokens, input)
                 end
                 goto finishTokenLoop
             elseif comparePattern(tokens, tokenIndex, closeErrorPattern) then
-                local message = "Error parsing markup, detected invalid token ".. tokens[tokenIndex + 2].Type ..", following a close."
-                table.insert(diagnostic, {message = message, column = currentToken.Start})
+                local message = "Error parsing markup, detected invalid token " ..
+                tokens[tokenIndex + 2].Type .. ", following a close."
+                table.insert(diagnostic, { message = message, column = currentToken.Start })
                 goto finishTokenLoop
             end
             -- ok so now we are some variant of a regular open marker
@@ -424,10 +440,11 @@ function LineParser:buildMarkupTreeFromTokens(tokens, input)
             -- [ ID, [ ID =, [ nomarkup
             -- or an error of: [ *
 
-            -- which means if the next token isn't an ID it's an error so let's handle that first  
-            if tokens[tokenIndex+1].Type ~= LexerTokenTypes.Identifier then
-                local message = "Error parsing markup, detected invalid token  " .. tokens[tokenIndex+1].Type .. ", following an open marker."
-                table.insert(diagnostic, {message = message, column = currentToken.Start})
+            -- which means if the next token isn't an ID it's an error so let's handle that first
+            if tokens[tokenIndex + 1].Type ~= LexerTokenTypes.Identifier then
+                local message = "Error parsing markup, detected invalid token  " ..
+                tokens[tokenIndex + 1].Type .. ", following an open marker."
+                table.insert(diagnostic, { message = message, column = currentToken.Start })
                 goto finishTokenLoop
             end
             -- ok so now we are a valid form of an open marker
@@ -449,7 +466,7 @@ function LineParser:buildMarkupTreeFromTokens(tokens, input)
                     --  so to get here we are [ nomarkup ]
                     -- which mean the first token after is 3 tokens away
                     local tokenStart = tokens[tokenIndex]
-                    local firstTokenAfterNoMarkup = tokens[tokenIndex + 3] -- TODO double check if this should be 2 
+                    local firstTokenAfterNoMarkup = tokens[tokenIndex + 3] -- TODO double check if this should be 2
 
                     -- we spin in here eating tokens until we hit closeOpenAttributePattern
                     -- when we do we stop and check if the id is nomarkupmarker
@@ -471,7 +488,7 @@ function LineParser:buildMarkupTreeFromTokens(tokens, input)
                                 nm = {
                                     name = "nomarkup",
                                     firstToken = tokenStart,
-                                    children = {text},
+                                    children = { text },
                                     properties = {},
                                 }
 
@@ -483,7 +500,9 @@ function LineParser:buildMarkupTreeFromTokens(tokens, input)
                         tokenIndex = tokenIndex + 1
                     end
                     if nm == nil then
-                        table.insert(diagnostic, {message = "we entered nomarkup mode but didn't find an exit token", column = tokenStart.Start})
+                        table.insert(diagnostic,
+                            { message = "we entered nomarkup mode but didn't find an exit token", column = tokenStart
+                            .Start })
                     else
                         table.insert(openNodes[#openNodes].children, nm)
                     end
@@ -502,8 +521,6 @@ function LineParser:buildMarkupTreeFromTokens(tokens, input)
                     tokenIndex = tokenIndex + 2
                     goto finishTokenLoop
                 end
-
-
             end
 
             -- ok so we are now one of two options
@@ -525,7 +542,6 @@ function LineParser:buildMarkupTreeFromTokens(tokens, input)
                 tokenIndex = tokenIndex + 1
             end
             goto finishTokenLoop
-
         elseif tType == LexerTokenTypes.Identifier then
             -- ok so we are now at an identifier
             -- which is the situation we want to be in for properties of the form ID = VALUE
@@ -536,25 +552,31 @@ function LineParser:buildMarkupTreeFromTokens(tokens, input)
             if comparePattern(tokens, tokenIndex, numberPropertyPattern) then
                 local value, valueString = TryNumberFromToken(input, tokens[tokenIndex + 2])
                 if value == fail then
-                    table.insert(diagnostic, {message = "failed to convert the value " .. valueString .. " into a valid property (expected number)", column = currentToken.Start})
+                    table.insert(diagnostic,
+                        { message = "failed to convert the value " ..
+                        valueString .. " into a valid property (expected number)", column = currentToken.Start })
                 end
-                openNodes[#openNodes].properties[id] =  value
+                openNodes[#openNodes].properties[id] = value
             elseif comparePattern(tokens, tokenIndex, booleanPropertyPattern) then
                 local value, valueString = TryBoolFromToken(input, tokens[tokenIndex + 2])
                 if value == fail then
-                    table.insert(diagnostic, {message = "failed to convert the value " .. valueString.. " into a valid property (expected boolean)", column = currentToken.Start})
+                    table.insert(diagnostic,
+                        { message = "failed to convert the value " ..
+                        valueString .. " into a valid property (expected boolean)", column = currentToken.Start })
                 end
-                openNodes[#openNodes].properties[id] =  value
+                openNodes[#openNodes].properties[id] = value
             elseif comparePattern(tokens, tokenIndex, stringPropertyPattern) then
                 local value = ValueFromToken(input, tokens[tokenIndex + 2])
-                openNodes[#openNodes].properties[id] =  value
+                openNodes[#openNodes].properties[id] = value
             elseif comparePattern(tokens, tokenIndex, interpolatedPropertyPattern) then
                 -- don't actually know what type this is but let's just assume it's a string
-                local value  = ValueFromInterpolatedToken(input, tokens[tokenIndex + 2])
-                openNodes[#openNodes].properties[id] =  value
-            else 
-                table.insert(diagnostic, {message = "Expected to find a property and it's value, but didn't", column = currentToken.Start})
-                return tree, diagnostic -- early exit, it's already broken, and right now, don't really care about full diagnostics
+                local value                          = ValueFromInterpolatedToken(input, tokens[tokenIndex + 2])
+                openNodes[#openNodes].properties[id] = value
+            else
+                table.insert(diagnostic,
+                    { message = "Expected to find a property and it's value, but didn't", column = currentToken.Start })
+                return tree,
+                    diagnostic          -- early exit, it's already broken, and right now, don't really care about full diagnostics
             end
             tokenIndex = tokenIndex + 2 -- equivilant to stream.Consume(2)
         elseif tType == LexerTokenTypes.CloseSlash then
@@ -565,13 +587,14 @@ function LineParser:buildMarkupTreeFromTokens(tokens, input)
                 local top = table.remove(openNodes)
                 local trimWhitespaceProp = top.properties.trimwhitespace
                 if trimWhitespaceProp == nil then
-                    top.properties.trimwhitespace =  true
+                    top.properties.trimwhitespace = true
                 end
                 tokenIndex = tokenIndex + 1 -- equivilant to stream.Consume(1)
             else
                 -- we found a / but aren't part of a self closing marker
                 -- at this stage this is now an error
-                table.insert(diagnostic, {message = "Encountered an unexpected closing slash", column = currentToken.Start})
+                table.insert(diagnostic,
+                    { message = "Encountered an unexpected closing slash", column = currentToken.Start })
             end
         end
         :: finishTokenLoop ::
@@ -583,39 +606,39 @@ function LineParser:buildMarkupTreeFromTokens(tokens, input)
     -- because at this stage it doesn't matter about ordering
 
     -- ok last thing to check is is there only one element left on the stack of open nodes
-    if(#openNodes > 1) then
+    if (#openNodes > 1) then
         local line = "parsing finished with unclosed attributes still on the stack: "
         for _, node in ipairs(openNodes) do
             if node.name then
-                line = line.. " [" .. node.name .. "]"
+                line = line .. " [" .. node.name .. "]"
             else
                 line = line .. " NULL"
             end
         end
-        table.insert(diagnostic, {message = line, column = 0})
+        table.insert(diagnostic, { message = line, column = 0 })
     end
 
-    if(#unmatchedCloses > 0) then
+    if (#unmatchedCloses > 0) then
         local line = "parsing finished with unmatched closes still remaining: "
         for _, unmatched in ipairs(unmatchedCloses) do
-            line = line.. " [/" .. unmatched .. "]"
+            line = line .. " [/" .. unmatched .. "]"
         end
-        table.insert(diagnostic, {message = line, column = 0})
+        table.insert(diagnostic, { message = line, column = 0 })
     end
 
     return tree, diagnostic
 end
 
-function LineParser:walkAndProcessTree(root, builder, attributes, localeCode, diagnostics)
-        -- self.sibling keeps track of the last seen older sibling during tree walking.
-        -- This is necessary to prevent a bug with "Yes... which I would have shown [emotion=\"frown\" /] had [b]you[/b] not interrupted me."
-        -- where the b tag is a rewriter and the emotion tag is not.
-        -- in that case because previously we only kept the last fully processed non-replacement sibling the emotion tag would eat the whitespace AFTER the b tag had replaced itself
+function pi.LineParser:walkAndProcessTree(root, builder, attributes, localeCode, diagnostics)
+    -- self.sibling keeps track of the last seen older sibling during tree walking.
+    -- This is necessary to prevent a bug with "Yes... which I would have shown [emotion=\"frown\" /] had [b]you[/b] not interrupted me."
+    -- where the b tag is a rewriter and the emotion tag is not.
+    -- in that case because previously we only kept the last fully processed non-replacement sibling the emotion tag would eat the whitespace AFTER the b tag had replaced itself
     self.sibling = nil
     self:walkTree(root, builder, attributes, localeCode, diagnostics, 0)
 end
 
-function LineParser:walkTree(root, builder, attributes, localeCode, diagnostics, offset)
+function pi.LineParser:walkTree(root, builder, attributes, localeCode, diagnostics, offset)
     if offset == nil then
         offset = 0
     end
@@ -643,7 +666,7 @@ function LineParser:walkTree(root, builder, attributes, localeCode, diagnostics,
 
     -- we aren't text so we will need to handle all our children
     -- we do this recursively
-    local childBuilder = {""}
+    local childBuilder = { "" }
     local childAttributes = {}
     for _, child in ipairs(root.children) do
         self:walkTree(child, childBuilder, childAttributes, localeCode, diagnostics, #(builder[1]) + offset)
@@ -657,14 +680,15 @@ function LineParser:walkTree(root, builder, attributes, localeCode, diagnostics,
     end
 
     -- finally now our children have done their stuff so we can run our own rewriter if necessary
-    -- to do that we will need the combined finished string of all our children and their attributes   
+    -- to do that we will need the combined finished string of all our children and their attributes
     local rewriter = self.markerProcessors[root.name]
     if rewriter ~= nil then
         -- we now need to do the rewrite
         -- so in this case we need to give the rewriter the combined child string and it's attributes
         -- because it is up to you to fix any attributes if you modify them
-        -- TODO this is probably messed up. No null handling for root.first token 
-        local attribute = MarkupAttribute(#(builder[1]) + offset, root.firstToken.Start, #(childBuilder[1]), root.name, root.properties)
+        -- TODO this is probably messed up. No null handling for root.first token
+        local attribute = lpi.MarkupAttribute(#(builder[1]) + offset, root.firstToken.Start, #(childBuilder[1]),
+            root.name, root.properties)
         local newDiagnostics = rewriter:ProcessReplacementMarker(attribute, childBuilder, childAttributes, localeCode)
         table.move(newDiagnostics, 1, #newDiagnostics, #diagnostics + 1, diagnostics)
     else
@@ -673,7 +697,8 @@ function LineParser:walkTree(root, builder, attributes, localeCode, diagnostics,
         -- the source position one is easy enough, that is just the position of the first token (wait you never added these you dingus)
         -- we know the length of all the children text because of the childBuilder so that gives us our range
         -- and we know our relative start because of our siblings text in the builder
-        local attribute = MarkupAttribute(#(builder[1]) + offset, root.firstToken.Start, #(childBuilder[1]), root.name, root.properties)
+        local attribute = lpi.MarkupAttribute(#(builder[1]) + offset, root.firstToken.Start, #(childBuilder[1]),
+            root.name, root.properties)
         table.insert(attributes, attribute)
     end
 
@@ -686,41 +711,40 @@ function LineParser:walkTree(root, builder, attributes, localeCode, diagnostics,
     self.sibling = root;
 end
 
-function LineParser:SquishSplitAttributes(attributes)
-        -- grab every attribute that has a _internalIncrementingProperty property
-        -- then for every attribute with the same value of that property we merge them
-        -- and finally remove the _internalIncrementingProperty property
-        local removals = {}
-        local merged = {}
-        for i, attribute in ipairs(attributes) do
-            local value = attribute.Properties["_internalIncrementingProperty"]
-            if value ~= nil then
-                local existingAttribute = merged[value]
-                if existingAttribute ~= nil then
-                    if existingAttribute.Position > attribute.Position then
-                        existingAttribute.Position = attribute.Position
-                    end
-                    existingAttribute.Length = existingAttribute.Length + attribute.Length
-                    merged[value] = existingAttribute
-                else
-                    merged[value] = attribute
+function pi.LineParser:SquishSplitAttributes(attributes)
+    -- grab every attribute that has a _internalIncrementingProperty property
+    -- then for every attribute with the same value of that property we merge them
+    -- and finally remove the _internalIncrementingProperty property
+    local removals = {}
+    local merged = {}
+    for i, attribute in ipairs(attributes) do
+        local value = attribute.Properties["_internalIncrementingProperty"]
+        if value ~= nil then
+            local existingAttribute = merged[value]
+            if existingAttribute ~= nil then
+                if existingAttribute.Position > attribute.Position then
+                    existingAttribute.Position = attribute.Position
                 end
-                table.insert(removals, i)
+                existingAttribute.Length = existingAttribute.Length + attribute.Length
+                merged[value] = existingAttribute
+            else
+                merged[value] = attribute
             end
+            table.insert(removals, i)
         end
-        -- now we need to remove all the ones with _internalIncrementingProperty
-        table.sort(removals)
-        for i = #removals, 1, -1 do
-            table.remove(attributes, removals[i])
-        end
-        -- and add our merged attributes back in
-        for _, value in pairs(merged) do
-            table.insert(attributes, value)
-        end
+    end
+    -- now we need to remove all the ones with _internalIncrementingProperty
+    table.sort(removals)
+    for i = #removals, 1, -1 do
+        table.remove(attributes, removals[i])
+    end
+    -- and add our merged attributes back in
+    for _, value in pairs(merged) do
+        table.insert(attributes, value)
+    end
 end
 
-
-function LineParser:ParseString(input, localeCode, addImplicitCharacterAttribute)
+function pi.LineParser:ParseString(input, localeCode, addImplicitCharacterAttribute)
     local squish = true
     local sort = true
     local addImplicitCharacterAttribute = addImplicitCharacterAttribute ~= false
@@ -732,9 +756,9 @@ function LineParser:ParseString(input, localeCode, addImplicitCharacterAttribute
     if #diagnostics > 0 then
         -- ok so at this point if parseResult.diagnostics is not empty we have lexing/parsing errors
         -- it makes no sense to continue, just set the text to be the input so something exists
-        return {text = input, attributes = {}}, diagnostics
+        return { text = input, attributes = {} }, diagnostics
     end
-    local builder = {""}
+    local builder = { "" }
     local attributes = {}
 
     self:walkAndProcessTree(parseResult, builder, attributes, localeCode, diagnostics)
@@ -759,13 +783,14 @@ function LineParser:ParseString(input, localeCode, addImplicitCharacterAttribute
             if characterMatch ~= nil then
                 local colonIndex = string.find(characterMatch, ":")
                 local characterName = string.sub(characterMatch, 1, colonIndex - 1)
-                local characterAttribute = MarkupAttribute(0, 0, #characterMatch, "character", {name = "name", value = characterName})
+                local characterAttribute = lpi.MarkupAttribute(0, 0, #characterMatch, "character",
+                    { name = "name", value = characterName })
                 table.insert(attributes, characterAttribute)
             end
         end
     end
 
-    if(sort) then
+    if (sort) then
         table.sort(attributes, function(a, b)
             return a.SourcePosition < b.SourcePosition
         end)
@@ -776,13 +801,16 @@ function LineParser:ParseString(input, localeCode, addImplicitCharacterAttribute
         attributes = attributes
     }, diagnostics
 end
-function LineParser:RegisterMarkerProcessor(attributeName, markerProcessor)
-   assert(type(attributeName) == "string", "attributeName must be a string")
-   assert(type(markerProcessor.ProcessReplacementMarker) == "function", "markerProcessor:ProcessReplacementMarker must be a function")
-   assert(self.markerProcessors[attributeName] == nil, "A marker processor for ".. attributeName .. " has already been registered.")
-   self.markerProcessors[attributeName] = markerProcessor
+
+function pi.LineParser:RegisterMarkerProcessor(attributeName, markerProcessor)
+    assert(type(attributeName) == "string", "attributeName must be a string")
+    assert(type(markerProcessor.ProcessReplacementMarker) == "function",
+        "markerProcessor:ProcessReplacementMarker must be a function")
+    assert(self.markerProcessors[attributeName] == nil,
+        "A marker processor for " .. attributeName .. " has already been registered.")
+    self.markerProcessors[attributeName] = markerProcessor
 end
 
-function LineParser:DeregisterMarkerProcessor(attributeName)
-   self.markerProcessors[attributeName] = nil
+function pi.LineParser:DeregisterMarkerProcessor(attributeName)
+    self.markerProcessors[attributeName] = nil
 end

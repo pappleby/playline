@@ -16,7 +16,7 @@ function Playline.LineProvider:init(lineStorage, metadata, useBuiltInMarkerProce
     self.LocaleCode = "en" -- placeholder until I think through how localization will work
     self.lineStorage = lineStorage
     self.metadata = metadata
-    self.lineParser = LineParser()
+    self.lineParser = Playline.Internal.LineParser()
 
     if useBuiltInMarkerProcessors or useBuiltInMarkerProcessors == nil then
         self:RegisterMarkerProcessor("plural", pluralRewritter)
@@ -78,7 +78,7 @@ function pluralRewritter:ProcessReplacementMarker(attribute, stringWrapper, chil
     if not numericValue then
         return {{message = "Plural markup rewriting failed, value: ".. value .. "not convertable to a number", column = attribute.SourcePosition}}
     end
-    local pluralCase = GetCardinalPluralCase(localeCode, numericValue)
+    local pluralCase = pu.GetCardinalPluralCase(localeCode, numericValue)
     local replacement = attribute.Properties[pluralCase]
     if not replacement then
         return {{message = "No replacement found for case: " .. pluralCase, column = attribute.SourcePosition}}
@@ -93,7 +93,7 @@ function ordinalRewritter:ProcessReplacementMarker(attribute, stringWrapper, chi
     if not numericValue then
         return {{message = "Ordinal markup rewriting failed, value: ".. value .. "not convertable to a number", column = attribute.SourcePosition}}
     end
-    local ordinalCase = GetOrdinalPluralCase(localeCode, numericValue)
+    local ordinalCase = pu.GetOrdinalPluralCase(localeCode, numericValue)
     local replacement = attribute.Properties[ordinalCase]
     if not replacement then
         return {{message = "No replacement found for case: " .. ordinalCase, column = attribute.SourcePosition}}
