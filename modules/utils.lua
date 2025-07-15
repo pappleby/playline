@@ -183,6 +183,18 @@ function pu.GetNodeHeaderValue(node, headerName)
     return nil
 end
 
+function pu.GetLineMetadataTagValue(lineMetadata, key)
+    -- TODO: This is pretty inefficient, consider preprocessing tags into a key:value table during compilation
+    local matchPattern = "^(" .. key .. "):?(.*)$"
+    for _, tag in ipairs(lineMetadata.tags) do
+        local tagKey, tagValue, anything = tag:match(matchPattern)
+        if tagKey then
+            return tagValue or "" -- return empty string if key exists but no value
+        end
+    end
+    return nil
+end
+
 function pu.GetContentSaliencyConditionVariables(node)
     local variablesString = pu.GetNodeHeaderValue(node, "$Yarn.Internal.ContentSaliencyVariables")
     if not variablesString or variablesString == "" then

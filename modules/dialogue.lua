@@ -150,9 +150,8 @@ function Playline.Dialogue:GetHeaderValue(nodeName, headerName)
 end
 
 function Playline.Dialogue:GetSaliencyOptionsForNodeGroup(nodeGroupName)
-    ---Not implemented yet
-    assert(false, "GetSaliencyOptionsForNodeGroup is not implemented yet.")
-    return {}
+    -- SmartVariableVM already has error handling, so no need to duplicate it here
+    return Playline.SmartVariableVM.GetSaliencyOptionsForNodeGroup(nodeGroupName, self.variableAccess, self.program, self.library)
 end
 
 function Playline.Dialogue:RegisterCommand(commandName, commandFunction)

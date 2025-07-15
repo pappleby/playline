@@ -1,8 +1,10 @@
 import "CoreLibs/object"
 import 'libraries/playline/modules/lineParser.lua'
 import 'libraries/playline/utilities/NumberPlurals.lua'
+import "utils.lua"
 
 Playline = Playline or {}
+local pu <const> = Playline.Utils
 
 local pluralRewritter = {}
 local ordinalRewritter = {}
@@ -33,8 +35,13 @@ function Playline.LineProvider:ExpandSubstitutions(text, substitutions)
 end
 
 function Playline.LineProvider:GetLine(lineId, substitutions)
-    -- todo: handle shadowlines here
     local metadata = self.metadata[lineId] or {}
+    local shadowLineId = pu.GetLineMetadataTagValue(metadata, "shadow")
+
+    if shadowLineId then
+       lineId = "line:" .. shadowLineId
+    end
+
     local lineText = self.lineStorage[lineId]
     local expandedText = self:ExpandSubstitutions(lineText, substitutions)
     local parseResult = self.lineParser:ParseString(expandedText, "en", metadata)
