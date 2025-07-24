@@ -11,9 +11,9 @@ function Playline.VariableAccess:init(variableStorage, program, library)
     self.program = program or {}
     self.library = library
     self.smartVariableNames = {}
-    for nodeName, nodeValue in pairs(self.program.nodes) do
-        for _, header in ipairs(nodeValue.headers) do
-            if header.key == "tags" and header.value == "Yarn.SmartVariable" then
+    for nodeName, nodeValue in pairs(self.program.Nodes) do
+        for _, header in ipairs(nodeValue.Headers) do
+            if header.Key == "tags" and header.Value == "Yarn.SmartVariable" then
                 self.smartVariableNames[nodeName] = true
             end
         end
@@ -21,12 +21,8 @@ function Playline.VariableAccess:init(variableStorage, program, library)
 end
 
 function Playline.VariableAccess:GetDefaultValue(name)
-    local variable = self.program.initialValues[name]
-    if variable == nil or variable.value == nil or variable.value.oneofKind == nil then
-        return nil
-    end
-    local variableKey = variable.value.oneofKind
-    return variable.value[variableKey]
+    local variable = self.program.InitialValues[name]
+    return variable
 end
 
 function Playline.VariableAccess:GetSmartVariableValue(name)

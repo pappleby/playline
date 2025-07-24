@@ -141,9 +141,9 @@ function Playline.Dialogue:Stop()
 end
 
 function Playline.Dialogue:GetHeaderValue(nodeName, headerName)
-    local node = self.program.nodes[nodeName]
+    local node = self.program.Nodes[nodeName]
     assert(node, "Node '" .. nodeName .. "' not found in program.")
-    for key,value in pairs(node.headers) do
+    for key,value in pairs(node.Headers) do
         if key == headerName then
             return playdate.string.trimWhitespace(value)
         end

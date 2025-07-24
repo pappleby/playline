@@ -6,40 +6,40 @@ local pu <const> = Playline.Utils
 local pi <const> = Playline.Internal
 
 local pushInstructionValueToStack = function(instruction, _, _, stack, _)
-    table.insert(stack, instruction.value)
+    table.insert(stack, instruction.Value)
 end
 local instructionCases = {
-    pushString = pushInstructionValueToStack,
-    pushFloat = pushInstructionValueToStack,
-    pushBool = pushInstructionValueToStack,
-    pop = function(_, _, _, stack, _)
+    PushString = pushInstructionValueToStack,
+    PushFloat = pushInstructionValueToStack,
+    PushBool = pushInstructionValueToStack,
+    Pop = function(_, _, _, stack, _)
         table.remove(stack)
     end,
-    callFunc = function(instruction, _, library, stack, _)
-        pi.VM.SharedVMCallFunction(instruction.functionName, library, stack)
+    CallFunc = function(instruction, _, library, stack, _)
+        pi.VM.SharedVMCallFunction(instruction.FunctionName, library, stack)
     end,
-    pushVariable = function(instruction, variableAccess, _, stack, _)
-        local variableName = instruction.variableName
+    PushVariable = function(instruction, variableAccess, _, stack, _)
+        local variableName = instruction.VariableName
         local loadedValue = variableAccess:Get(variableName)
         assert(loadedValue ~= nil, "Variable '" .. variableName .. "' has not been set and has no default value.")
         table.insert(stack, loadedValue)
     end,
-    jumpIfFalse = function(instruction, _, _, stack, programCounter)
+    JumpIfFalse = function(instruction, _, _, stack, programCounter)
         local condition = stack[#stack]
         if not condition then
-            programCounter[1] = instruction.targetNodeIndex
+            programCounter[1] = instruction.TargetNodeIndex
             return true
         end
     end,
-    stop = function()
+    Stop = function()
         return false
     end,
 }
 local evaluateInstruction = function(instruction, variableAccess, library, stack, programCounter)
-    local opcode = instruction.instructionType.oneofKind
+    local opcode = instruction.InstructionTypeCase
     local evalCase = instructionCases[opcode]
-    assert(evalCase, "Unknown instruction type: " .. instruction.instructionType.oneofKind .. "in smartVariableVM")
-    local evalResult = evalCase(instruction.instructionType[opcode], variableAccess, library, stack, programCounter)
+    assert(evalCase, "Unknown instruction type: " .. opcode .. "in smartVariableVM")
+    local evalResult = evalCase(instruction[opcode], variableAccess, library, stack, programCounter)
     if evalResult ~= nil then
         return evalResult
     end
@@ -57,11 +57,11 @@ local getSmartVariable = function(name, variableAccess, program, library)
     local stack = {}
     local programCounter = { 1 }
 
-    local smartVariableNode = program.nodes[name]
+    local smartVariableNode = program.Nodes[name]
     assert(smartVariableNode, "Smart variable node '" .. name .. "' not found in program.")
 
-    while programCounter[1] <= #smartVariableNode.instructions do
-        local instruction = smartVariableNode.instructions[programCounter[1]]
+    while programCounter[1] <= #smartVariableNode.Instructions do
+        local instruction = smartVariableNode.Instructions[programCounter[1]]
         if not evaluateInstruction(instruction, variableAccess, library, stack, programCounter) then
             break
         end
@@ -76,7 +76,7 @@ local getSmartVariable = function(name, variableAccess, program, library)
 end
 
 local getSaliencyOptionsForNodeGroup = function(nodeGroupName, variableAccess, program, library)
-    local nodeGroup = program.nodes[nodeGroupName]
+    local nodeGroup = program.Nodes[nodeGroupName]
     assert(nodeGroup, "Node group '" .. nodeGroupName .. "' not found in program.")
     if pu.GetNodeHeaderValue(nodeGroup, "$Yarn.Internal.NodeGroupHub") == nil then
         -- This is not a node group, it's a plain node.
@@ -89,7 +89,7 @@ local getSaliencyOptionsForNodeGroup = function(nodeGroupName, variableAccess, p
         } }
     end
     local options = {}
-    for nodeName, node in pairs(program.nodes) do
+    for nodeName, node in pairs(program.Nodes) do
         if pu.GetNodeHeaderValue(node, "$Yarn.Internal.NodeGroup") == nodeGroupName then
             local passingCount = 0
             local failingCount = 0

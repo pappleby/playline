@@ -42,7 +42,10 @@ function Playline.LineProvider:GetLine(lineId, substitutions)
        lineId = "line:" .. shadowLineId
     end
 
-    local lineText = self.lineStorage[lineId]
+    local lineInfo = self.lineStorage[lineId]
+    assert(lineId, "lineID is nil")
+    assert(lineInfo, "lineID: " .. lineId .. "not found in storage")
+    local lineText = lineInfo.Text
     local expandedText = self:ExpandSubstitutions(lineText, substitutions)
     local parseResult = self.lineParser:ParseString(expandedText, "en", metadata)
     local text = parseResult.text

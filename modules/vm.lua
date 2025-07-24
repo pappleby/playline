@@ -89,21 +89,17 @@ function pi.VM:SetExecutionState(newState)
 end
 
 function pi.VM:GetVariableDefaultValue(variableName)
-    local variable = self.program.initialValues[variableName]
-    if variable == nil or variable.value == nil or variable.value.oneofKind == nil then
-        return nil
-    end
-    local variableKey = variable.value.oneofKind
-    return variable.value[variableKey]
+    local variable = self.program.InitialValues[variableName]
+    return variable
 end
 
 function pi.VM:SetNode(nodeName, clearState)
     if (clearState == nil) then
         clearState = true
     end
-    assert(self.program ~= nil or #self.program.nodes > 0,
+    assert(self.program ~= nil or #self.program.Nodes > 0,
         'Cannot load node ' .. nodeName .. ' No nodes have been loaded.')
-    if (self.program.nodes[nodeName] == nil) then
+    if (self.program.Nodes[nodeName] == nil) then
         self.executionState = 'Stopped'
         error('No node named ' .. nodeName .. ' has been loaded.')
     end
@@ -113,13 +109,13 @@ function pi.VM:SetNode(nodeName, clearState)
         self:ResetState()
     end
 
-    self.currentNode = self.program.nodes[nodeName]
+    self.currentNode = self.program.Nodes[nodeName]
     self.state.currentNodeName = nodeName
     self.state.programCounter = 1 -- lua index starts at 1 :/
 
     if self.nodeStartHandler then self.nodeStartHandler() end
 
-    if self.prepareForLinesHandler and self.program.lineIdsForNode then
+    if self.prepareForLinesHandler and self.program.LineIDsForNode then
         local stringIds = self.program:lineIdsForNode(nodeName)
         self.prepareForLinesHandler(stringIds)
     end
@@ -167,10 +163,10 @@ function pi.VM:Continue()
     self.executionState = 'Running'
     -- Execute instructions until something forces us to stop
     while self.currentNode ~= nil and self.executionState == 'Running' do
-        local currentInstruction = self.currentNode.instructions[self.state.programCounter]
+        local currentInstruction = self.currentNode.Instructions[self.state.programCounter]
         self:RunInstruction(currentInstruction)
         self.state.programCounter += 1
-        if self.currentNode ~= nil and self.state.programCounter > #self.currentNode.instructions then
+        if self.currentNode ~= nil and self.state.programCounter > #self.currentNode.Instructions then
             self:ReturnFromNode(self.currentNode)
             self:SetExecutionState('Stopped')
             if self.dialogueCompleteHandler then self.dialogueCompleteHandler() end
@@ -210,11 +206,11 @@ function pi.VM:ExecuteJumpToNode(nodeName, isDetour)
     else
         -- We are jumping straight to another node. Unwind the current
         -- call stack and issue a 'node complete' event for every node.
-        self:ReturnFromNode(self.program.nodes[self.state.currentNodeName])
+        self:ReturnFromNode(self.program.Nodes[self.state.currentNodeName])
         while self.state:CanReturn() do
             local poppedNodeName = self.state:PopCallStack().nodeName
             if poppedNodeName ~= nil then
-                self:ReturnFromNode(self.program.nodes[poppedNodeName])
+                self:ReturnFromNode(self.program.Nodes[poppedNodeName])
             end
         end
     end
@@ -230,11 +226,11 @@ function pi.VM:ExecuteJumpToNode(nodeName, isDetour)
 end
 
 -- Shared between the normal vm and the smart variable vm
-function pi.VM.SharedVMCallFunction(functionName, library, stack)
+function pi.VM.SharedVMCallFunction(FunctionName, library, stack)
     -- Call a function, whose parameters are expected to
     -- be on the stack. Pushes the function's return value,
     -- if it returns one.
-    local f = library:getFunction(functionName)
+    local f = library:getFunction(FunctionName)
     local actualParamCount = table.remove(stack, #stack) -- The first value on the stack is the number of parameters
     local params = {}
     for i = actualParamCount, 1, -1 do
@@ -246,22 +242,22 @@ function pi.VM.SharedVMCallFunction(functionName, library, stack)
     end
 end
 
-function pi.VM:CallFunction(functionName)
-    pi.VM.SharedVMCallFunction(functionName, self.library, self.state.stack)
+function pi.VM:CallFunction(FunctionName)
+    pi.VM.SharedVMCallFunction(FunctionName, self.library, self.state.stack)
 end
 
 local vmRunInstructionCases = {
-    jumpTo = function(self, instruction)
-        self.state.programCounter = instruction.destination
+    JumpTo = function(self, instruction)
+        self.state.programCounter = instruction.Destination
     end,
-    peekAndJump = function(self, _)
+    PeekAndJump = function(self, _)
         self.state.programCounter = self.state:PeekValue() - 1 -- subtraction needed?
     end,
-    runLine = function(self, instruction)
+    RunLine = function(self, instruction)
         -- Looks up a string from the string table and
         -- passes it to the client as a line
-        local lineId = instruction.lineID
-        local substitutionCount = instruction.substitutionCount or 0
+        local lineId = instruction.LineID
+        local substitutionCount = instruction.SubstitutionCount or 0
         local substitutions = self.state:PopArgs(substitutionCount)
         self.executionState = 'DeliveringContent'
         self.lineHandler(lineId, substitutions)
@@ -270,9 +266,9 @@ local vmRunInstructionCases = {
             self.executionState = 'WaitingForContinue'
         end
     end,
-    runCommand = function(self, instruction)
-        local commandText = instruction.commandText
-        local expressionCount = instruction.substitutionCount or 0
+    RunCommand = function(self, instruction)
+        local commandText = instruction.CommandText
+        local expressionCount = instruction.SubstitutionCount or 0
         for expressionIndex = expressionCount - 1, 0, -1 do
             local substitution = tostring(self.state:PopValue())
             local marker = "{" .. expressionIndex .. "}"
@@ -286,14 +282,13 @@ local vmRunInstructionCases = {
             self.executionState = 'WaitingForContinue'
         end
     end,
-    addOption = function(self, instruction)
-        local lineId = instruction.lineID
-        local substitutionCount = instruction.substitutionCount or 0
-        local destination = instruction.destination + 1
+    AddOption = function(self, instruction)
+        local lineId = instruction.LineID
+        local substitutionCount = instruction.SubstitutionCount or 0
+        local destination = instruction.Destination + 1
         local substitutions = self.state:PopArgs(substitutionCount)
 
         local resultOption = {
-            id = instruction.id,
             lineId = lineId,
             substitutions = substitutions,
             destination = destination,
@@ -305,7 +300,7 @@ local vmRunInstructionCases = {
 
         table.insert(self.state.currentOptions, resultOption)
     end,
-    showOptions = function(self, instruction)
+    ShowOptions = function(self, instruction)
         if #self.state.currentOptions == 0 then
             self:SetExecutionState('Stopped')
             self.dialogueCompleteHandler()
@@ -323,61 +318,61 @@ local vmRunInstructionCases = {
             self.executionState = 'WaitingForContinue'
         end
     end,
-    pushString = function(self, instruction)
-        self.state:PushValue(instruction.value)
+    PushString = function(self, instruction)
+        self.state:PushValue(instruction.Value)
     end,
-    pushFloat = function(self, instruction)
-        self.state:PushValue(instruction.value)
+    PushFloat = function(self, instruction)
+        self.state:PushValue(instruction.Value)
     end,
-    pushBool = function(self, instruction)
-        self.state:PushValue(instruction.value)
+    PushBool = function(self, instruction)
+        self.state:PushValue(instruction.Value)
     end,
-    jumpIfFalse = function(self, instruction)
+    JumpIfFalse = function(self, instruction)
         if self.state:PeekValue() == false then
-            self.state.programCounter = instruction.destination
+            self.state.programCounter = instruction.Destination
         end
     end,
-    pop = function(self, instruction)
+    Pop = function(self, instruction)
         self.state:PopValue()
     end,
-    callFunc = function(self, instruction)
-        self:CallFunction(instruction.functionName)
+    CallFunc = function(self, instruction)
+        self:CallFunction(instruction.FunctionName)
     end,
-    pushVariable = function(self, instruction)
-        local variableName = instruction.variableName
+    PushVariable = function(self, instruction)
+        local variableName = instruction.VariableName
         local loadedValue = self.variableAccess:Get(variableName)
         assert(loadedValue ~= nil, "Variable '" .. variableName .. "' has not been set and has no default value.")
         self.state:PushValue(loadedValue)
     end,
-    storeVariable = function(self, instruction)
+    StoreVariable = function(self, instruction)
         local loadedValue = self.state:PopValue()
-        local variableName = instruction.variableName
+        local variableName = instruction.VariableName
         self.variableAccess:Set(variableName, loadedValue)
     end,
-    stop = function(self, instruction)
+    Stop = function(self, instruction)
         self:ReturnFromNode(self.currentNode)
         while self.state:CanReturn() do
             local poppedNodeName = state:PopCallStack().nodeName
             if poppedNodeName ~= nil then
-                self:ReturnFromNode(self.program.nodes[poppedNodeName])
+                self:ReturnFromNode(self.program.Nodes[poppedNodeName])
             end
         end
         self:dialogueCompleteHandler()
         self:SetExecutionState('Stopped')
     end,
-    runNode = function(self, instruction)
-        self:ExecuteJumpToNode(instruction.nodeName, false)
+    RunNode = function(self, instruction)
+        self:ExecuteJumpToNode(instruction.NodeName, false)
     end,
-    peekAndRunNode = function(self, _)
+    PeekAndRunNode = function(self, _)
         self:ExecuteJumpToNode(nil, false)
     end,
-    detourToNode = function(self, instruction)
-        self:ExecuteJumpToNode(instruction.nodeName, true)
+    DetourToNode = function(self, instruction)
+        self:ExecuteJumpToNode(instruction.NodeName, true)
     end,
-    peekAndDetourToNode = function(self, _)
+    PeekAndDetourToNode = function(self, _)
         self:ExecuteJumpToNode(nil, true)
     end,
-    ["return"] = function(self, _)
+    ["Return"] = function(self, _)
         self:ReturnFromNode(self.currentNode)
         local returnSite = {}
         if self.state:CanReturn() then
@@ -391,23 +386,23 @@ local vmRunInstructionCases = {
             self:Stop()
         end
     end,
-    addSaliencyCandidate = function(self, instruction)
+    AddSaliencyCandidate = function(self, instruction)
         local condition = self.state:PopValue()
         local candidate = {
-            contentId = instruction.contentId,
-            complexityScore = instruction.complexityScore,
+            contentId = instruction.ContentId,
+            complexityScore = instruction.ComplexityScore,
             failingConditionValueCount = condition and 0 or 1,
             passingConditionValueCount = condition and 1 or 0,
-            destination = instruction.destination + 1,
+            destination = instruction.Destination + 1,
             contentType = "line"
         }
         table.insert(self.saliencyCandidateList, candidate)
     end,
-    addSaliencyCandidateFromNode = function(self, instruction)
-        local nodeName = instruction.nodeName
+    AddSaliencyCandidateFromNode = function(self, instruction)
+        local nodeName = instruction.NodeName
         local passingCount = 0
         local failingCount = 0
-        local node = self.program.nodes[nodeName]
+        local node = self.program.Nodes[nodeName]
         if node == nil then
             error("Node '" .. nodeName .. "' does not exist in the program.")
         end
@@ -426,12 +421,12 @@ local vmRunInstructionCases = {
             complexityScore = complexityScore,
             passingConditionValueCount = passingCount,
             failingConditionValueCount = failingCount,
-            destination = instruction.destination + 1,
+            destination = instruction.Destination + 1,
             contentType = "node"
         }
         table.insert(self.saliencyCandidateList, candidate)
     end,
-    selectSaliencyCandidate = function(self, _)
+    SelectSaliencyCandidate = function(self, _)
         local result = self.contentSaliencyStrategy:QueryBestContent(self.saliencyCandidateList)
         if result ~= nil then
             -- TODO Validate that the result was in the candidate list
@@ -446,8 +441,8 @@ local vmRunInstructionCases = {
     end,
 }
 function pi.VM:RunInstruction(instruction)
-    local opcode = instruction.instructionType.oneofKind
+    local opcode = instruction.InstructionTypeCase
     local handler = vmRunInstructionCases[opcode]
-    assert(handler, "No handler for instruction opcode: " .. instruction.instructionType.oneofKind)
-    handler(self, instruction.instructionType[opcode])
+    assert(handler, "No handler for instruction opcode: " .. opcode)
+    handler(self, instruction[opcode])
 end

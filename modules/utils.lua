@@ -174,10 +174,10 @@ function pu.ResumeThreadsAndYieldUntilAllDead(threads, paramsArray)
 end
 
 function pu.GetNodeHeaderValue(node, headerName)
-    if node and node.headers then
-        for _, header in ipairs(node.headers) do
-            if header.key == headerName then
-                return header.value
+    if node and node.Headers then
+        for _, header in ipairs(node.Headers) do
+            if header.Key == headerName then
+                return header.Value
             end
         end
     end
@@ -185,13 +185,9 @@ function pu.GetNodeHeaderValue(node, headerName)
 end
 
 function pu.GetLineMetadataTagValue(lineMetadata, key)
-    -- TODO: This is pretty inefficient, consider preprocessing tags into a key:value table during compilation
-    local matchPattern = "^(" .. key .. "):?(.*)$"
-    for _, tag in ipairs(lineMetadata.tags) do
-        local tagKey, tagValue, anything = tag:match(matchPattern)
-        if tagKey then
-            return tagValue or "" -- return empty string if key exists but no value
-        end
+    local tags = lineMetadata.Tags
+    if tags ~= nil then
+        return tags[key]
     end
     return nil
 end

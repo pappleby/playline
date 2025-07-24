@@ -1,11 +1,15 @@
 import 'libraries/playline/modules/dialogue.lua'
 import 'libraries/playline/modules/utils.lua'
 import 'libraries/playline/modules/lineProvider.lua'
+-- Really only makes sense in the demo project, move there?
+import 'assets/data/playline/Project.yarnc.lua'
 
 local variableStorage = {}
-local lineStorage = playdate.datastore.read('assets//data//playline//stringtable')
-local metadata = playdate.datastore.read('assets//data//playline//metadata')
-local yarnProgram = playdate.datastore.read('assets//data//playline//yarnprogram')
+
+-- TODO make lineStorage more sophisticated and handle default lines + import csv of lines / localizations
+local lineStorage = Playline.Compiled.Project.Lines
+local metadata = Playline.Compiled.Project.Lines
+local yarnProgram = Playline.Compiled.Project.Program
 
 local boldRewritter = {
     ProcessReplacementMarker = function(rewritter, attribute, stringWrapper, childAttributes, localeCode)
